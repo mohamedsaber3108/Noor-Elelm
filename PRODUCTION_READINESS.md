@@ -1,6 +1,6 @@
 # NOOR AL-ILM: production readiness report
 
-Status: **Production Build Ready.** The code builds, migrates and runs as a production Worker locally, and every page and API below was exercised. It is **not deployed**: that needs your Cloudflare account (see `DEPLOY_CLOUDFLARE.md`).
+Status: **Deployed and verified on AWS EC2 over HTTP** (`http://13.53.135.68`, eu-north-1, Ubuntu 26.04, release `cca8854`). HTTPS and a domain are still pending: they need a DNS record (see `DEPLOY_EC2.md`).
 
 ## 1. Architecture
 
@@ -94,6 +94,15 @@ Local numbers are a floor. Workers run at the edge with far more capacity. The a
 | Legal pages | drafts | lawyer review |
 | Error tracking | no Sentry or similar configured | Workers Logs are on (`observability.enabled`); add Sentry if wanted |
 
-## 10. Deployment
+## 10. Live deployment (EC2) verification
+
+Run from outside the server against `http://13.53.135.68`:
+- Browser crawl of 110 routes on desktop and mobile (220 loads): all render. The only flags are the expected 401 behind `/account` when signed out.
+- API through nginx: health, 404, login-required/admin-only enforcement, register → session → quiz → bookmark, cross-site write blocked (403), admin login and statistics. The temporary account was deleted afterwards.
+- Security headers present, `/_next/static` served `immutable`, rate-limit keys use the real client IP (X-Real-IP from nginx).
+- `noor-deploy` run three times: build, pre-deploy backup, tracked migrations (`No migrations to apply` on re-run), health-checked switch, prune to 3 releases.
+- `noor-al-ilm` and `nginx` enabled at boot. Daily backup cron installed.
+
+## 11. Deployment
 
 See `DEPLOY_CLOUDFLARE.md`. Create the first admin with `node scripts/create-admin.mjs you@domain.com '<password>' 'Name' > admin.sql`, then run `npx wrangler d1 execute noor-al-ilm-prod --remote --file admin.sql`.
