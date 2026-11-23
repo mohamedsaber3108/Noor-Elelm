@@ -1,0 +1,36 @@
+[Unit]
+Description=NOOR AL-ILM web application (Cloudflare Workers runtime, local D1/SQLite)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=noor
+Group=noor
+WorkingDirectory=/opt/noor-al-ilm/current
+Environment=HOME=/var/lib/noor-al-ilm/home
+Environment=CI=1
+Environment=NODE_ENV=production
+Environment=WRANGLER_SEND_METRICS=false
+# Listens on loopback only; nginx is the public entry point and sets X-Real-IP (trusted for rate limiting).
+ExecStart=/usr/local/bin/node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev \
+  --config dist/server/wrangler.json --local --persist-to /var/lib/noor-al-ilm/state \
+  --ip 127.0.0.1 --port 8787 --inspector-port 0 --show-interactive-dev-session=false \
+  --var TRUST_PROXY_HEADER:x-real-ip
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/noor-al-ilm /opt/noor-al-ilm
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryMax=1500M
+
+[Install]
+WantedBy=multi-user.target
