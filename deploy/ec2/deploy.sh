@@ -71,6 +71,11 @@ fi
 
 echo "==> Prune old releases (keep $KEEP_RELEASES)"
 current="$(readlink -f "$APP_ROOT/current")"
-ls -1dt "$APP_ROOT"/releases/*/ | sed 's:/$::' | grep -vx "$current" | tail -n +"$KEEP_RELEASES" | xargs -r rm -rf
+{ ls -1dt "$APP_ROOT"/releases/*/ | sed 's:/$::' | grep -vx "$current" || true; } | tail -n +"$KEEP_RELEASES" | xargs -r rm -rf
+
+echo "==> Refresh server scripts from this release"
+install -m 755 "$rel/deploy/ec2/deploy.sh" /usr/local/sbin/noor-deploy
+install -m 755 "$rel/deploy/ec2/backup.sh" /usr/local/sbin/noor-backup
+install -m 755 "$rel/deploy/ec2/create-admin.sh" /usr/local/sbin/noor-create-admin
 
 echo "Deployed ${sha:0:7}: $(curl -fsS -m 3 "$HEALTH_URL")"
