@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1792782568808,
+      "tag": "0000_crazy_doctor_doom",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792784205924,
+      "tag": "0001_spotty_charles_xavier",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792784329718,
+      "tag": "0002_redundant_puma",
+      "breakpoints": true
+    }
+  ]
+}
