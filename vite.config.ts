@@ -16,14 +16,17 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const managedLinux = readExecutionProfile() === "managed-linux";
 
 const localBindingConfig = {
+  ...(process.env.WORKER_NAME ? { name: process.env.WORKER_NAME } : {}),
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
   d1_databases: d1
     ? [
         {
           binding: d1,
-          database_name: "site-creator-d1",
-          database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
+          database_name: process.env.D1_DATABASE_NAME ?? "site-creator-d1",
+          database_id: process.env.D1_DATABASE_ID ?? SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
+          // Relative to the generated dist/server/wrangler.json.
+          migrations_dir: "../../drizzle",
         },
       ]
     : [],

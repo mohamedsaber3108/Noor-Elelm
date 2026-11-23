@@ -14,6 +14,15 @@ const eslintConfig = defineConfig([
     "work/**",
   ]),
   {
+    files: ["components/**/*.{ts,tsx}"],
+    rules: {
+      // Data-loading effects and localStorage hydration are intentional client patterns here.
+      "react-hooks/set-state-in-effect": "off",
+      // Single catch-all App Router route; plain anchors force full-page navigation by design.
+      "@next/next/no-html-link-for-pages": "off",
+    },
+  },
+  {
     files: ["components/ui/**/*.{ts,tsx}", "hooks/use-mobile.ts"],
     rules: {
       // These files are vendored verbatim from shadcn@4.17.0. Keep the
