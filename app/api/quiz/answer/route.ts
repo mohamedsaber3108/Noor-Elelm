@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import {getCurrentUser,isReviewer} from '@/app/auth';
 import { env } from "cloudflare:workers";
 import { trialQuestions } from "@/lib/quiz-bank";
 export async function POST(request:NextRequest){
  const db=env.DB;if(!db)return NextResponse.json({error:"DATABASE_UNAVAILABLE"},{status:503});
- const u=await getChatGPTUser();if(!u)return NextResponse.json({error:"SIGN_IN_REQUIRED"},{status:401});
+ const u=await getCurrentUser();if(!u)return NextResponse.json({error:"SIGN_IN_REQUIRED"},{status:401});
  let body:{questionId?:string;answerKey?:string;token?:string};try{body=await request.json()}catch{return NextResponse.json({error:"INVALID_JSON"},{status:400})}
  const q=trialQuestions.find(x=>x.id===body.questionId);
  const keys=body.answerKey?.split(',')||[];

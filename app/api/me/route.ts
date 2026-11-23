@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import {getCurrentUser,isReviewer} from '@/app/auth';
 import { env } from "cloudflare:workers";
 export async function GET(){
  const db=env.DB;if(!db)return NextResponse.json({error:"DATABASE_UNAVAILABLE"},{status:503});
- const u=await getChatGPTUser();if(!u)return NextResponse.json({error:"SIGN_IN_REQUIRED"},{status:401});
+ const u=await getCurrentUser();if(!u)return NextResponse.json({error:"SIGN_IN_REQUIRED"},{status:401});
  const [coins,answers,periods]=await Promise.all([
  db.prepare("SELECT COALESCE(SUM(delta),0) AS total FROM point_ledger WHERE user_id=?").bind(u.userId).first<{total:number}>(),
  db.prepare("SELECT COUNT(DISTINCT question_id) AS total FROM quiz_attempts WHERE user_id=? AND correct=1").bind(u.userId).first<{total:number}>(),

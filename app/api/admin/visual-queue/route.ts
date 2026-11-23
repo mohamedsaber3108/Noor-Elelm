@@ -1,5 +1,5 @@
 import {NextResponse} from 'next/server';
-import {getChatGPTUser} from '@/app/chatgpt-auth';
+import {getCurrentUser,isReviewer} from '@/app/auth';
 import {env} from 'cloudflare:workers';
 import records from '@/data/archive-records.json';
 
@@ -12,10 +12,8 @@ const chosen=[...explicit,...(supplemental&&!explicit.includes(supplemental)?[su
 const positions=new Map(all.map((r,i)=>[r.id,i+1]));
 
 export async function GET(){
- const user=await getChatGPTUser();
- const vars=env as unknown as Record<string,unknown>;
- const allowed=!!user&&(String(vars.REVIEWER_IDS||'').split(',').map(s=>s.trim()).includes(user.userId)||
-  String(vars.REVIEWER_EMAILS||'').toLowerCase().split(',').map(s=>s.trim()).includes(user.email.toLowerCase()));
+ const user=await getCurrentUser();
+ const allowed=isReviewer(user);
  if(!allowed)return NextResponse.json({error:'REVIEWER_ACCESS_REQUIRED'},{status:403});
  if(!env.DB)return NextResponse.json({error:'DATABASE_UNAVAILABLE'},{status:503});
  const placeholders=chosen.map(()=>'?').join(',');

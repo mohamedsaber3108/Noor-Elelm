@@ -1,5 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
-import {getChatGPTUser} from '@/app/chatgpt-auth';
+import {getCurrentUser,isReviewer} from '@/app/auth';
 import {env} from 'cloudflare:workers';
 import records from '@/data/archive-records.json';
 const all=records as {id:string;world:string;title:string;text:string;source:string;location:string;type:string;status:string}[];
@@ -9,10 +9,9 @@ export async function GET(req:NextRequest){
  const p=req.nextUrl.searchParams,id=p.get('id');
  if(id){
   const row=all.find(r=>r.id===id);if(!row)return NextResponse.json({error:'NOT_FOUND'},{status:404});
-  const u=await getChatGPTUser();
+  const u=await getCurrentUser();
   // Draft source prose is restricted to explicitly configured reviewers, even if the Site is later opened to readers.
-  const e=env as unknown as Record<string,unknown>;
-  const allowed=!!u&&(String(e.REVIEWER_IDS||'').split(',').map(s=>s.trim()).includes(u.userId)||String(e.REVIEWER_EMAILS||'').toLowerCase().split(',').map(s=>s.trim()).includes(u.email.toLowerCase()));
+  const allowed=isReviewer(u);
   if(!allowed)return NextResponse.json({...safe(row),text:null,restricted:true});
   const edited=env.DB?await env.DB.prepare('SELECT title,body,revision,status FROM content_items WHERE id=?').bind(id).first<{title:string;body:string;revision:number;status:string}>():null;
   return NextResponse.json({...row,sequence:sequence.get(row.id),title:edited?.title||row.title,text:edited?.body||row.text,revision:edited?.revision||0,restricted:false});
