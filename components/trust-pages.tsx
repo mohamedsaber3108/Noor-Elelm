@@ -9,7 +9,7 @@ function Notice({children}:{children:ReactNode}){return <div className="trust-no
 
 export function SupportPage(){return <main className="page-main prose-page trust-page"><TrustHero kicker="المساعدة والدعم" title="خلّينا نبدأ من المشكلة." copy="مسارات واضحة للمشكلة التقنية، التصحيح العلمي، وإدارة الحساب. لا نستخدم المحادثة العامة للأطفال." icon={<HeartHandshake size={31}/>}/><div className="support-grid">
  <section><BookOpenCheck size={23}/><h2>معلومة أو مصدر يحتاج تصحيحًا</h2><p>افتح صفحة المادة ثم اختر «أبلغ عن تصحيح». يصل البلاغ إلى سجل المراجعة ولا يغير النص أو حالة الاعتماد تلقائيًا.</p><Link href="/search">افتح البحث <ArrowLeft size={16}/></Link></section>
- <section><LockKeyhole size={23}/><h2>دخول أو بيانات شخصية</h2><p>الدخول يتم من خلال حساب ChatGPT في النسخة الخاصة. لا يطلب الموقع كلمة مرور مستقلة، ولا نطلب رموز دخول عبر الرسائل.</p><Link href="/dashboard">افتح لوحتي <ArrowLeft size={16}/></Link></section>
+ <section><LockKeyhole size={23}/><h2>دخول أو بيانات شخصية</h2><p>سجّل الدخول بالبريد وكلمة المرور من صفحة الدخول، وغيّر كلمة المرور أو احذف حسابك من صفحة «حسابي». لا نطلب رموز دخول عبر الرسائل.</p><Link href="/account">افتح حسابي <ArrowLeft size={16}/></Link></section>
  <section><ShieldCheck size={23}/><h2>محتوى أو سلوك غير مناسب</h2><p>لا تعتمد على بطاقة أو سؤال قيد التحقق بوصفه إرشادًا دينيًا. استخدم صفحة التصحيح مع المرجع المتاح لتسجيل ملاحظتك.</p><Link href="/methodology">اقرأ المنهجية <ArrowLeft size={16}/></Link></section>
  </div><Notice>لا توجد قناة دعم تجارية أو خدمة مدفوعة مفعّلة في هذه النسخة. قبل الإطلاق العام يلزم تحديد مسؤول دعم، وساعات استجابة، وقناة اتصال موثقة.</Notice></main>}
 

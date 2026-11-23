@@ -1,0 +1,98 @@
+import { NextRequest, NextResponse } from "next/server";
+import { env } from "cloudflare:workers";
+import { z } from "zod";
+import { getCurrentUser, isAdmin, sameOrigin } from "@/app/auth";
+
+const err = (error: string, status: number) => NextResponse.json({ error }, { status });
+const ROLES = ["learner", "reviewer", "admin"] as const;
+const PAGE = 25;
+
+async function adminOnly() {
+  const u = await getCurrentUser();
+  return isAdmin(u) ? u : null;
+}
+
+/** GET ?q=&page= -> user list plus platform statistics. */
+export async function GET(req: NextRequest) {
+  const admin = await adminOnly();
+  if (!admin) return err("ADMIN_ACCESS_REQUIRED", 403);
+  const db = env.DB;
+  if (!db) return err("DATABASE_UNAVAILABLE", 503);
+  const q = (req.nextUrl.searchParams.get("q") || "").trim().slice(0, 80).toLowerCase();
+  const page = Math.max(1, Math.min(10_000, Number(req.nextUrl.searchParams.get("page")) || 1));
+  const like = `%${q.replace(/[\\%_]/g, (c) => "\\" + c)}%`;
+  const [users, total, stats] = await Promise.all([
+    db.prepare(
+      "SELECT u.id,u.email,u.display_name AS name,u.role,u.created_at AS createdAt,u.last_login_at AS lastLoginAt," +
+        "COALESCE((SELECT SUM(delta) FROM point_ledger p WHERE p.user_id=u.id),0) AS coins " +
+        "FROM users u WHERE (?1='' OR lower(u.email) LIKE ?2 ESCAPE '\\' OR lower(u.display_name) LIKE ?2 ESCAPE '\\') " +
+        "ORDER BY u.created_at DESC LIMIT ?3 OFFSET ?4",
+    ).bind(q, like, PAGE, (page - 1) * PAGE).all(),
+    db.prepare("SELECT COUNT(*) AS n FROM users u WHERE (?1='' OR lower(u.email) LIKE ?2 ESCAPE '\\' OR lower(u.display_name) LIKE ?2 ESCAPE '\\')").bind(q, like).first<{ n: number }>(),
+    db.batch([
+      db.prepare("SELECT COUNT(*) AS n FROM users"),
+      db.prepare("SELECT COUNT(*) AS n FROM users WHERE created_at>=datetime('now','-7 days')"),
+      db.prepare("SELECT COUNT(*) AS n FROM users WHERE last_login_at>=datetime('now','-7 days')"),
+      db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE expires_at>?").bind(Date.now()),
+      db.prepare("SELECT COUNT(*) AS n FROM quiz_attempts"),
+      db.prepare("SELECT COUNT(*) AS n FROM quiz_attempts WHERE correct=1"),
+      db.prepare("SELECT COALESCE(SUM(delta),0) AS n FROM point_ledger"),
+      db.prepare("SELECT COUNT(*) AS n FROM bookmarks"),
+      db.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE action='CORRECTION_REPORT'"),
+      db.prepare("SELECT COUNT(*) AS n FROM content_items"),
+      db.prepare("SELECT COUNT(*) AS n FROM reviews"),
+      db.prepare("SELECT role AS k, COUNT(*) AS n FROM users GROUP BY role"),
+    ]),
+  ]);
+  const n = (i: number) => (stats[i].results[0] as { n: number } | undefined)?.n ?? 0;
+  return NextResponse.json({
+    users: users.results, total: total?.n ?? 0, page, pageSize: PAGE,
+    stats: {
+      users: n(0), newUsers7d: n(1), activeUsers7d: n(2), activeSessions: n(3), quizAttempts: n(4), quizCorrect: n(5),
+      coinsIssued: n(6), bookmarks: n(7), correctionReports: n(8), importedDrafts: n(9), reviews: n(10),
+      roles: Object.fromEntries((stats[11].results as { k: string; n: number }[]).map((r) => [r.k, r.n])),
+    },
+  }, { headers: { "Cache-Control": "no-store" } });
+}
+
+const putSchema = z.object({ id: z.string().min(1).max(64), role: z.enum(ROLES) });
+
+/** PUT {id, role} changes a user's role. */
+export async function PUT(req: NextRequest) {
+  const admin = await adminOnly();
+  if (!admin) return err("ADMIN_ACCESS_REQUIRED", 403);
+  if (!sameOrigin(req)) return err("BAD_ORIGIN", 403);
+  const db = env.DB;
+  if (!db) return err("DATABASE_UNAVAILABLE", 503);
+  const parsed = putSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return err("INVALID_INPUT", 400);
+  const { id, role } = parsed.data;
+  const target = await db.prepare("SELECT role FROM users WHERE id=?").bind(id).first<{ role: string }>();
+  if (!target) return err("NOT_FOUND", 404);
+  if (target.role === "admin" && role !== "admin") {
+    const n = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE role='admin'").first<{ n: number }>();
+    if ((n?.n ?? 0) <= 1) return err("LAST_ADMIN", 409);
+  }
+  await db.batch([
+    db.prepare("UPDATE users SET role=? WHERE id=?").bind(role, id),
+    db.prepare("INSERT INTO audit_events(id,actor_id,action,target_id,detail_json) VALUES(?,?,?,?,?)")
+      .bind(crypto.randomUUID(), admin.userId, "ROLE_CHANGED", id, JSON.stringify({ from: target.role, to: role })),
+  ]);
+  return NextResponse.json({ ok: true });
+}
+
+/** DELETE {id} signs a user out everywhere (revokes sessions). */
+export async function DELETE(req: NextRequest) {
+  const admin = await adminOnly();
+  if (!admin) return err("ADMIN_ACCESS_REQUIRED", 403);
+  if (!sameOrigin(req)) return err("BAD_ORIGIN", 403);
+  const db = env.DB;
+  if (!db) return err("DATABASE_UNAVAILABLE", 503);
+  const parsed = z.object({ id: z.string().min(1).max(64) }).safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return err("INVALID_INPUT", 400);
+  await db.batch([
+    db.prepare("DELETE FROM sessions WHERE user_id=?").bind(parsed.data.id),
+    db.prepare("INSERT INTO audit_events(id,actor_id,action,target_id) VALUES(?,?,?,?)").bind(crypto.randomUUID(), admin.userId, "SESSIONS_REVOKED", parsed.data.id),
+  ]);
+  return NextResponse.json({ ok: true });
+}
