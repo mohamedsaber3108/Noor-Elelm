@@ -1,6 +1,6 @@
 # نور العلم — NOOR AL-ILM
 
-Private, working Islamic education and research platform. Its goal is a source-led visual encyclopedia. **The 45-file archive has not received scholarly approval.** Drafts are private to configured reviewers; general visitors see titles and provenance, not raw source prose.
+Arabic-first Islamic education and research platform. Its goal is a source-led visual encyclopedia. **The 45-file archive has not received scholarly approval.** Drafts are private to configured reviewers; general visitors see titles and provenance, not raw source prose.
 
 ## Open the experience
 
@@ -16,9 +16,17 @@ Private, working Islamic education and research platform. Its goal is a source-l
 - `/admin` reviewer-gated batch import, versioned text edits/restore and review decisions. `/methodology`, `/institutions`, `/pricing`, `/rewards` state governance and unavailable external services.
 - `/corrections/:id` accepts a signed-in reader's source-backed correction report, saved to the audit log with a daily limit; `/admin/corrections` shows recent reports only to configured reviewers. Reports do not publish or alter religious content.
 
-## Stack
+## Accounts and roles
+Email + password accounts (`/register`, `/login`, `/account`). Roles: `learner` (default), `reviewer` (editorial tools under `/admin`), `admin` (also `/admin/users`: users, roles, statistics). Public pages never require sign-in.
 
-Sites Workers, Vinext/React/TypeScript, Cloudflare D1 with Drizzle (16 tables), CSS tokens, local light/dark preference. Sites supplies authenticated visitor identity; review privileges use an explicit hosting allowlist. This hosted runtime is D1, **not PostgreSQL**. An AWS/PostgreSQL migration is documented in `DEPLOY_AWS.md` and is not yet delivered. See `RUN_LOCAL.md` for the local build and migration commands.
+## Stack
+Vinext (Next 16 App Router) + React 19 + TypeScript on the Cloudflare Workers runtime, D1 (SQLite) through Drizzle with tracked migrations in `drizzle/`. See `PRODUCTION_READINESS.md` for architecture, APIs, security and test results.
+
+## Run and deploy
+- Local: `RUN_LOCAL.md`
+- Single server (AWS EC2 / any Ubuntu host, nginx + systemd): `DEPLOY_EC2.md`
+- Cloudflare Workers + D1: `DEPLOY_CLOUDFLARE.md`
+- `DEPLOY_AWS.md` is an older, unimplemented PostgreSQL migration plan.
 
 ## Source data
 
