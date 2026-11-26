@@ -95,6 +95,11 @@ export function safeReturnTo(value: string | null | undefined): string {
   return value;
 }
 
+/** Is this request https? True if the URL says so or the first X-Forwarded-Proto value does ("https, http" counts as https). */
+export function isHttps(req: Request): boolean {
+  return new URL(req.url).protocol === "https:" || req.headers.get("x-forwarded-proto")?.split(",")[0].trim() === "https";
+}
+
 /** CSRF guard: a browser Origin must match the host this request was addressed to (directly or via our reverse proxy). */
 export function sameOrigin(req: Request): boolean {
   const origin = req.headers.get("origin");
@@ -107,8 +112,7 @@ export function sameOrigin(req: Request): boolean {
   }
   let o: URL;
   try { o = new URL(origin); } catch { return false; } // "null" lands here
-  // Same scheme rule as isSecure() in the routes: https if the URL or the proxy header says so.
-  const scheme = new URL(req.url).protocol === "https:" || req.headers.get("x-forwarded-proto")?.split(",")[0].trim() === "https" ? "https:" : "http:";
+  const scheme = isHttps(req) ? "https:" : "http:";
   if (o.protocol !== scheme) return false;
   const hosts = [new URL(req.url).host, req.headers.get("host"), req.headers.get("x-forwarded-host")?.split(",")[0].trim()];
   return hosts.some((h) => !!h && h === o.host);

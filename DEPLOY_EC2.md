@@ -57,6 +57,10 @@ nginx must pass `X-Forwarded-Proto` (and `Host`). The write-route Origin check c
 
 The app sends a `Content-Security-Policy-Report-Only` header by default. Setting `CSP_MODE` to `enforce` sends `Content-Security-Policy` instead. Any other value stays report-only. There is no report endpoint: violations show only in the browser console.
 
+To set `CSP_MODE` on this host (it is not a secret): add `--var CSP_MODE:enforce` to the `ExecStart` line of the service unit (next to `--var TRUST_PROXY_HEADER:x-real-ip`), run `sudo systemctl daemon-reload`, then `sudo systemctl restart` the service. To roll back, remove the flag and repeat.
+
+Scripts, curl calls and monitors that send the session cookie but no `Origin` and no `Sec-Fetch-Site` header now get `403` on writes (POST, PUT, PATCH, DELETE). Send an `Origin` header that matches the site, for example `Origin: https://your-site`. Browsers already send it.
+
 Rollout:
 
 1. Deploy with `CSP_MODE` unset (report-only) to staging.
