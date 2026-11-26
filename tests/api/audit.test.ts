@@ -67,6 +67,10 @@ describe("append-only triggers", () => {
     expect(sql).toMatch(/CREATE TRIGGER `audit_events_no_update` BEFORE UPDATE ON `audit_events`[\s\S]*RAISE\(ABORT, 'AUDIT_APPEND_ONLY'\)/);
     expect(sql).toMatch(/CREATE TRIGGER `audit_events_no_delete` BEFORE DELETE ON `audit_events`[\s\S]*RAISE\(ABORT, 'AUDIT_APPEND_ONLY'\)/);
   });
+  it("after all migrations sqlite_master still holds both triggers (a later table rebuild would lose them)", async () => {
+    const t = (await db().prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='audit_events'").all<{ name: string }>()).results.map((x) => x.name);
+    expect(t).toEqual(expect.arrayContaining(["audit_events_no_update", "audit_events_no_delete"]));
+  });
   it("the stand-in applies the migration: UPDATE and DELETE are refused, for new and old rows", async () => {
     await log("A");
     await db().prepare("INSERT INTO audit_events(id,actor_id,action,target_id) VALUES('old','u','OLD','t')").run();
@@ -86,6 +90,15 @@ describe("concurrent writers and failed audit writes", () => {
     expect(r[1].prev_hash).toBe(r[0].hash);
     expect((await verifyAuditChain(D())).ok).toBe(true);
   });
+  it("three writers read the same tip: all land, in order, no gap", async () => {
+    const res = await Promise.all([log("A"), log("B"), log("C")]);
+    expect(res).toEqual([true, true, true]);
+    expect((await rows()).map((x) => x.seq)).toEqual([1, 2, 3]);
+    expect((await verifyAuditChain(D())).ok).toBe(true);
+  });
+  it("an error that is not about the audit table is surfaced, not turned into false", async () => {
+    await expect(runAudited(D(), async () => [D().prepare("INSERT INTO no_such_table(x) VALUES(1)")])).rejects.toThrow(/no_such_table/);
+  });
   it("the unique index refuses a second row with the same seq", async () => {
     const s1 = await auditStatement(D(), { actorId: "a", action: "A", targetId: "t" });
     const s2 = await auditStatement(D(), { actorId: "a", action: "B", targetId: "t" });
@@ -95,7 +108,7 @@ describe("concurrent writers and failed audit writes", () => {
   it("a failing audit write fails the action: role change answers 503 and is not applied", async () => {
     await signIn("admin");
     const t = await seedUser("learner");
-    await db().prepare("CREATE TRIGGER test_audit_down BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'DOWN'); END").run();
+    await db().prepare("CREATE TRIGGER test_audit_down BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'AUDIT_DOWN'); END").run();
     const res = await put({ id: t.id, role: "reviewer" });
     expect(res.status).toBe(503);
     expect((await res.json()).error).toBe("AUDIT_UNAVAILABLE");

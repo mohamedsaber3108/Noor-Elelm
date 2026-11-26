@@ -28,13 +28,18 @@ export async function POST(req: NextRequest) {
   try { step = await verifyTotp(await decryptSecret(row.secret_enc, uid), parsed.data.code, Date.now(), row.last_step); }
   catch { return err("MFA_SECRET_UNREADABLE", 500); }
   if (step === null) return fail("code");
-  // Atomic replay guard: only one request can move last_step forward to this step.
+  // Atomic replay guard: only one request can move last_step forward to this step. It stays outside the audited
+  // batch on purpose (a spent code must stay spent). enabled_at is set INSIDE the batch below, so a failed audit
+  // write leaves the account not enrolled; the user then retries with the next code and gets the recovery codes.
   const now = Date.now();
-  const moved = await db.prepare("UPDATE user_mfa SET last_step=?,enabled_at=COALESCE(enabled_at,?) WHERE user_id=? AND (last_step IS NULL OR last_step<?)").bind(step, now, uid, step).run();
+  const moved = await db.prepare("UPDATE user_mfa SET last_step=? WHERE user_id=? AND (last_step IS NULL OR last_step<?)").bind(step, uid, step).run();
   if (moved.meta.changes !== 1) return fail("replay");
   const sid = await currentSessionId();
   const first = row.enabled_at == null;
-  const stmts = [db.prepare("UPDATE sessions SET mfa_verified_at=? WHERE id=?").bind(now, sid)];
+  const stmts = [
+    db.prepare("UPDATE user_mfa SET enabled_at=COALESCE(enabled_at,?) WHERE user_id=?").bind(now, uid),
+    db.prepare("UPDATE sessions SET mfa_verified_at=? WHERE id=?").bind(now, sid),
+  ];
   const codes: string[] = [];
   if (first) {
     stmts.push(db.prepare("DELETE FROM mfa_recovery_codes WHERE user_id=?").bind(uid));

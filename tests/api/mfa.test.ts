@@ -162,6 +162,25 @@ describe("enrol, verify, recover", () => {
     expect(await count("SELECT COUNT(*) AS n FROM mfa_recovery_codes WHERE user_id=?", u.id)).toBe(10);
     expect(await count("SELECT COUNT(*) AS n FROM audit_events WHERE action='MFA_ENROLLED' AND actor_id=?", u.id)).toBe(1);
   });
+  it("audit failure on first enrolment leaves enabled_at NULL and no verified session; a retry then enrols with recovery codes", async () => {
+    useKey();
+    const u = await signInUnverified("admin");
+    const e = await (await post(enroll, undefined)).json();
+    await db().prepare("CREATE TRIGGER test_audit_down BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'AUDIT_DOWN'); END").run();
+    const bad = await post(verify, { code: await codeFor(e.secret) });
+    expect(bad.status).toBe(503);
+    expect((await db().prepare("SELECT enabled_at FROM user_mfa WHERE user_id=?").bind(u.id).first<{ enabled_at: number | null }>())!.enabled_at).toBeNull();
+    expect(await count("SELECT COUNT(*) AS n FROM mfa_recovery_codes WHERE user_id=?", u.id)).toBe(0);
+    expect((await usersGet(call("GET", "/api/admin/users") as never)).status).toBe(403);
+    await db().prepare("DROP TRIGGER test_audit_down").run();
+    // The first code is spent (replay guard), so the retry uses the next time step.
+    const ok = await post(verify, { code: await codeFor(e.secret, 1) });
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).recoveryCodes).toHaveLength(10);
+    expect((await db().prepare("SELECT enabled_at FROM user_mfa WHERE user_id=?").bind(u.id).first<{ enabled_at: number | null }>())!.enabled_at).not.toBeNull();
+    expect(await count("SELECT COUNT(*) AS n FROM mfa_recovery_codes WHERE user_id=?", u.id)).toBe(10);
+    expect((await usersGet(call("GET", "/api/admin/users") as never)).status).toBe(200);
+  });
   const toDigits = (c: string, zero: number) => [...c].map(d => String.fromCharCode(zero + Number(d))).join("");
   it("accepts Arabic-Indic digits: ٣٤٥٦٧٨ is read as 345678", async () => {
     expect(normalizeDigits("٣٤٥٦٧٨")).toBe("345678");

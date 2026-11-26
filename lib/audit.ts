@@ -5,7 +5,7 @@
  * Use auditStatement() inside the SAME db.batch as the action it records, through runAudited(): if the audit
  * row cannot be written, the whole batch (the action too) is not applied.
  *
- * shortcut: one writer wins per seq (unique index); the loser retries once, then the caller answers 503.
+ * shortcut: one writer wins per seq (unique index); the losers retry (see MAX_TRIES), then the caller answers 503.
  * Upgrade to a durable-object counter if audit writes ever become hot.
  */
 
@@ -30,6 +30,7 @@ type Chained = {
 };
 
 // A detail key that looks like a secret is a bug in the caller: refuse it instead of storing it.
+// This checks key NAMES only. A secret under a harmless key, or inside a free-text value, is not caught.
 const SECRET_KEY = /pass(word)?|token|secret|code|hash|key|cookie|otp/i;
 
 const field = (v: string | number | null) => (v === null ? "-1:" : `${String(v).length}:${String(v)}`);
@@ -64,17 +65,27 @@ export async function auditStatement(db: D1Database, i: AuditInput): Promise<D1P
   ).bind(i.id ?? crypto.randomUUID(), row.actor_id, row.action, row.target_id, row.detail_json, row.created_at, row.seq, row.prev_hash, hash, row.actor_role, row.result, row.source, row.reason);
 }
 
+// shortcut: with N parallel writers one loses per round, so N writers need up to N tries; 5 covers the load of this
+// single-host site. Upgrade (durable-object counter) if more than 4 audited writes can race.
+const MAX_TRIES = 5;
+
 /**
- * Runs build()'s statements as one batch. On failure (for example a concurrent writer took the same seq) it
- * rebuilds and tries once more. Returns false when both tries fail: nothing was applied, the caller answers 503.
+ * Runs build()'s statements as one batch. When a concurrent writer took the same seq (unique-index conflict) it
+ * rebuilds and tries again, up to MAX_TRIES. Returns false when the audit row cannot be written: nothing was
+ * applied, the caller answers 503. Errors not about the audit table are rethrown as they are.
  */
 export async function runAudited(db: D1Database, build: () => Promise<D1PreparedStatement[]>): Promise<boolean> {
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < MAX_TRIES; attempt++) {
     try {
       await db.batch(await build());
       return true;
-    } catch {
-      /* retry once */
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // Only a seq/prev_hash conflict on the audit table is worth one retry. Another audit-table failure (for
+      // example a trigger) answers false at once. Any error that is not about the audit table is not ours: surface it.
+      const auditError = /audit_events|AUDIT_/i.test(msg);
+      if (!auditError) throw e;
+      if (!/UNIQUE/i.test(msg)) return false;
     }
   }
   return false;
