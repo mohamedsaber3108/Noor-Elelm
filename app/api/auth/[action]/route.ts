@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 import {
-  SESSION_COOKIE, clientIp, createSession, destroySession, getCurrentUser, hashPassword, isReviewer, isStaff,
+  SESSION_COOKIE, clientIp, createSession, isSecureRequest, destroySession, getCurrentUser, hashPassword, isReviewer, isStaff,
   rateLimit, registrationAllowed, registrationMode, sameOrigin, sessionCookieOptions, verifyPassword,
 } from "@/app/auth";
 import { issueMail } from "@/lib/auth-tokens";
@@ -14,14 +14,15 @@ const loginSchema = z.object({ email, password: z.string().min(1).max(200) });
 const DUMMY_HASH = "pbkdf2$100000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
 const err = (error: string, status: number) => NextResponse.json({ error }, { status });
-const isSecure = (req: NextRequest) => new URL(req.url).protocol === "https:" || req.headers.get("x-forwarded-proto") === "https";
+const isSecure = isSecureRequest;
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
   if ((await ctx.params).action !== "session") return err("NOT_FOUND", 404);
-  const u = await getCurrentUser({ allowUnverified: true });
+  // ?peek=1 reads without counting as use (the header timer asks this way, so it never keeps a staff session alive).
+  const u = await getCurrentUser({ allowUnverified: true, touch: new URL(req.url).searchParams.get("peek") !== "1" });
   // `mfa` tells the page that a staff session must finish MFA first; nothing else works until then.
   const mfa = u && isStaff(u) && !u.mfaVerified ? "required" : undefined;
-  return NextResponse.json({ user: u ? { name: u.displayName, email: u.email, reviewer: isReviewer(u), emailVerified: u.emailVerified, ...(mfa ? { mfa } : {}) } : null, registrationOpen: registrationMode() !== "closed" }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ user: u ? { name: u.displayName, email: u.email, reviewer: isReviewer(u), emailVerified: u.emailVerified, staffExpiresInSeconds: u.staffExpiresInSeconds, ...(mfa ? { mfa } : {}) } : null, registrationOpen: registrationMode() !== "closed" }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ action: string }> }) {

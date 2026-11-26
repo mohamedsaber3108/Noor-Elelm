@@ -39,7 +39,7 @@ export const authTokens = sqliteTable("auth_tokens", {
 }, t => [index("auth_tokens_hash_idx").on(t.tokenHash), index("auth_tokens_user_kind_idx").on(t.userId, t.kind)]);
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(), userId: text("user_id").notNull(), expiresAt: integer("expires_at").notNull(),
-  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`), userAgent: text("user_agent"), mfaVerifiedAt: integer("mfa_verified_at")
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`), userAgent: text("user_agent"), mfaVerifiedAt: integer("mfa_verified_at"), lastSeenAt: integer("last_seen_at")
 }, t => [index("sessions_user_idx").on(t.userId), index("sessions_expiry_idx").on(t.expiresAt)]);
 export const userMfa = sqliteTable("user_mfa", {
   userId: text("user_id").primaryKey(), secretEnc: text("secret_enc").notNull(), enabledAt: integer("enabled_at"), lastStep: integer("last_step")

@@ -57,6 +57,13 @@
       "when": 1795730625302,
       "tag": "0007_audit_chain",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1795732814109,
+      "tag": "0008_session_limits",
+      "breakpoints": true
     }
   ]
 }
