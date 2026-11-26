@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from '@/components/full-page-link';
 
 // Each text has an Arabic and an English line. The page stays right-to-left; the English line is left-to-right.
@@ -34,8 +34,16 @@ function readFragmentToken(): string {
   return m ? m[1] : '';
 }
 
+/** Moves keyboard focus to a message when it appears, so it is not lost when the form is replaced. */
+function useFocusOn(on: unknown) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (on) ref.current?.focus(); }, [on]);
+  return ref;
+}
+
 export function ForgotPage() {
   const [email, setEmail] = useState(''), [busy, setBusy] = useState(false), [done, setDone] = useState(false), [error, setError] = useState<[string, string] | null>(null);
+  const doneRef = useFocusOn(done), errRef = useFocusOn(error);
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
     const r = await post('/api/auth/password-reset/request', { email });
@@ -44,10 +52,10 @@ export function ForgotPage() {
   }
   return <main className="page-main"><div className="page-hero"><span className="eyebrow">حسابك</span><h1>نسيت كلمة المرور؟</h1><p lang="en" dir="ltr">Forgot your password?</p></div>
     <div className="correction-panel">{done
-      ? <div role="status"><p><T ar="إن كان لهذا البريد حساب، فسنرسل إليه رابطًا لإعادة التعيين. الرابط صالح 30 دقيقة ويعمل مرة واحدة." en="If an account exists for this email, we will send it a reset link. The link is valid for 30 minutes and works once." /></p></div>
+      ? <div role="status" tabIndex={-1} ref={doneRef}><p><T ar="إن كان لهذا البريد حساب، فسنرسل إليه رابطًا لإعادة التعيين. الرابط صالح 30 دقيقة ويعمل مرة واحدة." en="If an account exists for this email, we will send it a reset link. The link is valid for 30 minutes and works once." /></p></div>
       : <form onSubmit={submit}>
         <label>البريد الإلكتروني <small lang="en" dir="ltr">Email</small><input required type="email" dir="ltr" autoComplete="email" maxLength={254} value={email} onChange={e => setEmail(e.target.value)} /></label>
-        {error && <p role="alert" className="error-note"><T ar={error[0]} en={error[1]} /></p>}
+        {error && <div role="alert" tabIndex={-1} ref={errRef} className="error-note"><T ar={error[0]} en={error[1]} /></div>}
         <button className="btn-primary" disabled={busy}>{busy ? 'لحظة… / Wait…' : 'أرسل الرابط / Send link'}</button>
       </form>}
     <Link href="/login">العودة لتسجيل الدخول / Back to sign in</Link>
@@ -58,7 +66,10 @@ export function ResetPage() {
   const [token, setToken] = useState(''), [ready, setReady] = useState(false);
   const [password, setPassword] = useState(''), [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false), [done, setDone] = useState(false), [error, setError] = useState<[string, string] | null>(null);
-  useEffect(() => { setToken(readFragmentToken()); setReady(true); }, []);
+  const doneRef = useFocusOn(done), errRef = useFocusOn(error);
+  // The fragment is read once and kept in a ref: readFragmentToken clears it, and StrictMode runs effects twice.
+  const first = useRef<string | null>(null);
+  useEffect(() => { if (first.current === null) first.current = readFragmentToken(); setToken(first.current); setReady(true); }, []);
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
     const r = await post('/api/auth/password-reset/confirm', { token, password });
@@ -67,13 +78,13 @@ export function ResetPage() {
   }
   return <main className="page-main"><div className="page-hero"><span className="eyebrow">حسابك</span><h1>كلمة مرور جديدة.</h1><p lang="en" dir="ltr">Choose a new password.</p></div>
     <div className="correction-panel">{done
-      ? <div role="status"><p><T ar="تم تغيير كلمة المرور وإنهاء كل الجلسات. سجّل الدخول بكلمة المرور الجديدة." en="Your password was changed and all sessions were ended. Sign in with the new password." /></p><Link href="/login">تسجيل الدخول / Sign in</Link></div>
+      ? <div role="status" tabIndex={-1} ref={doneRef}><p><T ar="تم تغيير كلمة المرور وإنهاء كل الجلسات. سجّل الدخول بكلمة المرور الجديدة." en="Your password was changed and all sessions were ended. Sign in with the new password." /></p><Link href="/login">تسجيل الدخول / Sign in</Link></div>
       : ready && !token ? <div role="alert" className="error-note"><p><T ar="الرابط ناقص. افتح الرابط من الرسالة كاملًا، أو اطلب رابطًا جديدًا." en="The link is incomplete. Open the whole link from the email, or ask for a new one." /></p><Link href="/forgot">طلب رابط جديد / Ask for a new link</Link></div>
       : <form onSubmit={submit}>
-        <label>كلمة المرور الجديدة <small lang="en" dir="ltr">New password</small><input required type={show ? 'text' : 'password'} dir="ltr" minLength={10} maxLength={200} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} /></label>
-        <small>10 أحرف على الأقل / At least 10 characters.</small>
-        <button type="button" className="btn-outline" aria-pressed={show} onClick={() => setShow(s => !s)}>{show ? 'إخفاء كلمة المرور / Hide password' : 'إظهار كلمة المرور / Show password'}</button>
-        {error && <p role="alert" className="error-note"><T ar={error[0]} en={error[1]} /></p>}
+        <label>كلمة المرور الجديدة <small lang="en" dir="ltr">New password</small><input required type={show ? 'text' : 'password'} dir="ltr" minLength={10} maxLength={200} autoComplete="new-password" aria-describedby="pw-hint" value={password} onChange={e => setPassword(e.target.value)} /></label>
+        <small id="pw-hint">10 أحرف على الأقل / At least 10 characters.</small>
+        <button type="button" className="btn-outline" aria-pressed={show} onClick={() => setShow(s => !s)}>إظهار كلمة المرور / Show password</button>
+        {error && <div role="alert" tabIndex={-1} ref={errRef} className="error-note"><T ar={error[0]} en={error[1]} /></div>}
         <button className="btn-primary" disabled={busy || !token}>{busy ? 'لحظة… / Wait…' : 'تغيير كلمة المرور / Change password'}</button>
       </form>}
     </div></main>;
@@ -82,7 +93,8 @@ export function ResetPage() {
 export function VerifyEmailPage() {
   const [state, setState] = useState<'wait' | 'ok' | 'missing' | 'fail'>('wait'), [error, setError] = useState<[string, string]>(FALLBACK);
   const [token, setToken] = useState('');
-  useEffect(() => { const t = readFragmentToken(); setToken(t); if (!t) setState('missing'); }, []);
+  const first = useRef<string | null>(null);
+  useEffect(() => { if (first.current === null) first.current = readFragmentToken(); const t = first.current; setToken(t); if (!t) setState('missing'); }, []);
   async function confirm() {
     const r = await post('/api/auth/verify-email/confirm', { token });
     if (r.ok) setState('ok'); else { setError(errText(r)); setState('fail'); }
