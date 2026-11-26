@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 import {
-  SESSION_COOKIE, clientIp, createSession, destroySession, getCurrentUser, hashPassword, isReviewer,
+  SESSION_COOKIE, clientIp, createSession, destroySession, getCurrentUser, hashPassword, isReviewer, isStaff,
   rateLimit, registrationAllowed, registrationMode, sameOrigin, sessionCookieOptions, verifyPassword,
 } from "@/app/auth";
 
@@ -17,8 +17,10 @@ const isSecure = (req: NextRequest) => new URL(req.url).protocol === "https:" ||
 
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
   if ((await ctx.params).action !== "session") return err("NOT_FOUND", 404);
-  const u = await getCurrentUser();
-  return NextResponse.json({ user: u ? { name: u.displayName, email: u.email, reviewer: isReviewer(u) } : null, registrationOpen: registrationMode() !== "closed" }, { headers: { "Cache-Control": "no-store" } });
+  const u = await getCurrentUser({ allowUnverified: true });
+  // `mfa` tells the page that a staff session must finish MFA first; nothing else works until then.
+  const mfa = u && isStaff(u) && !u.mfaVerified ? "required" : undefined;
+  return NextResponse.json({ user: u ? { name: u.displayName, email: u.email, reviewer: isReviewer(u), ...(mfa ? { mfa } : {}) } : null, registrationOpen: registrationMode() !== "closed" }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
@@ -64,11 +66,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
   if (!parsed.success) return err("INVALID_INPUT", 400);
   const { email: mail, password } = parsed.data;
   if (!(await rateLimit(`login:${ip}:${mail}`, 8, 15 * 60 * 1000)) || !(await rateLimit(`loginip:${ip}`, 40, 15 * 60 * 1000))) return err("RATE_LIMITED", 429);
-  const row = await env.DB.prepare("SELECT id,password_hash FROM users WHERE email=?").bind(mail).first<{ id: string; password_hash: string }>();
+  const row = await env.DB.prepare("SELECT id,password_hash,role FROM users WHERE email=?").bind(mail).first<{ id: string; password_hash: string; role: string }>();
   const ok = await verifyPassword(password, row?.password_hash ?? DUMMY_HASH);
   if (!row || !ok) return err("INVALID_CREDENTIALS", 401);
   await env.DB.prepare("UPDATE users SET last_login_at=CURRENT_TIMESTAMP WHERE id=?").bind(row.id).run();
-  const res = NextResponse.json({ ok: true });
+  // Staff get an unverified session; the page sends them to /mfa and nothing else works until they finish.
+  const res = NextResponse.json({ ok: true, ...(isStaff({ userId: row.id, role: row.role }) ? { mfa: "required" } : {}) });
   res.cookies.set(SESSION_COOKIE, await createSession(row.id, req.headers.get("user-agent")), sessionCookieOptions(isSecure(req)));
   return res;
 }

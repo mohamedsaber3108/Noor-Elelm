@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { env } from "cloudflare:workers";
 
-export type AppUser = { userId: string; email: string; displayName: string; fullName: string | null; role: string };
+export type AppUser = { userId: string; email: string; displayName: string; fullName: string | null; role: string; mfaVerified: boolean };
 
 export const SESSION_COOKIE = "nai_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -45,10 +45,10 @@ export function sessionCookieOptions(secure: boolean, maxAgeSeconds = SESSION_TT
 }
 
 /** Creates a session row and returns the raw token to be placed in the cookie. */
-export async function createSession(userId: string, userAgent: string | null) {
+export async function createSession(userId: string, userAgent: string | null, opts: { mfaVerified?: boolean } = {}) {
   const token = b64(crypto.getRandomValues(new Uint8Array(32))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  await env.DB!.prepare("INSERT INTO sessions(id,user_id,expires_at,user_agent) VALUES(?,?,?,?)")
-    .bind(await sha256Hex(token), userId, Date.now() + SESSION_TTL_MS, userAgent?.slice(0, 200) ?? null).run();
+  await env.DB!.prepare("INSERT INTO sessions(id,user_id,expires_at,user_agent,mfa_verified_at) VALUES(?,?,?,?,?)")
+    .bind(await sha256Hex(token), userId, Date.now() + SESSION_TTL_MS, userAgent?.slice(0, 200) ?? null, opts.mfaVerified ? Date.now() : null).run();
   return token;
 }
 
@@ -56,27 +56,44 @@ export async function destroySession(token: string) {
   await env.DB!.prepare("DELETE FROM sessions WHERE id=?").bind(await sha256Hex(token)).run();
 }
 
-export async function getCurrentUser(): Promise<AppUser | null> {
+/** Id of the current session row (hash of the cookie token), or null. */
+export async function currentSessionId(): Promise<string | null> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  return token && token.length <= 128 ? sha256Hex(token) : null;
+}
+
+/**
+ * The signed-in user. Staff (reviewer, admin, REVIEWER_IDS) whose session is not MFA-verified count as signed out,
+ * so every route refuses them. Only the MFA routes and the session probe pass `allowUnverified`.
+ */
+export async function getCurrentUser(opts: { allowUnverified?: boolean } = {}): Promise<AppUser | null> {
   if (!env.DB) return null;
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token || token.length > 128) return null;
   const row = await env.DB.prepare(
-    "SELECT u.id,u.email,u.display_name,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires_at>?",
-  ).bind(await sha256Hex(token), Date.now()).first<{ id: string; email: string; display_name: string; role: string }>();
+    "SELECT u.id,u.email,u.display_name,u.role,s.mfa_verified_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires_at>?",
+  ).bind(await sha256Hex(token), Date.now()).first<{ id: string; email: string; display_name: string; role: string; mfa_verified_at: number | null }>();
   if (!row) return null;
-  return { userId: row.id, email: row.email, displayName: row.display_name, fullName: row.display_name, role: row.role };
+  const user: AppUser = { userId: row.id, email: row.email, displayName: row.display_name, fullName: row.display_name, role: row.role, mfaVerified: row.mfa_verified_at != null };
+  if (isStaff(user) && !user.mfaVerified && !opts.allowUnverified) return null;
+  return user;
 }
 
-/** Reviewer access: DB role `reviewer`/`admin`, or user id listed in REVIEWER_IDS. Email allowlists are intentionally unsupported (emails are unverified). */
-export function isReviewer(user: AppUser | null | undefined): boolean {
+/** Staff by role or by REVIEWER_IDS. Staff need an MFA-verified session (OD-04a). */
+export function isStaff(user: { userId: string; role: string } | null | undefined): boolean {
   if (!user) return false;
   if (user.role === "reviewer" || user.role === "admin") return true;
   const ids = String((env as unknown as Record<string, unknown>).REVIEWER_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
   return ids.includes(user.userId);
 }
 
+/** Reviewer access: DB role `reviewer`/`admin`, or user id listed in REVIEWER_IDS. Email allowlists are intentionally unsupported (emails are unverified). */
+export function isReviewer(user: AppUser | null | undefined): boolean {
+  return !!user && isStaff(user) && user.mfaVerified;
+}
+
 export function isAdmin(user: AppUser | null | undefined): boolean {
-  return !!user && user.role === "admin";
+  return !!user && user.role === "admin" && user.mfaVerified;
 }
 
 /** Fixed-window limiter backed by D1. Returns true when the call is allowed. */

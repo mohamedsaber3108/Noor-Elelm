@@ -4,7 +4,7 @@ import { GET as importGet, POST as importPost } from "@/app/api/admin/import/rou
 import { GET as reviewGet, POST as reviewPost } from "@/app/api/admin/review/route";
 import { GET as queueGet } from "@/app/api/admin/visual-queue/route";
 import summaries from "@/data/archive-summaries.json";
-import { setEnv, call, count, db, signIn, EVIL } from "../helpers";
+import { setEnv, call, count, db, signIn, verifySessions, EVIL } from "../helpers";
 
 const ID = (summaries as { id: string }[])[0].id;
 const req = (m: string, p: string, b?: unknown, o = {}) => call(m, p, b, o);
@@ -41,6 +41,7 @@ describe("admin editorial routes: access control", () => {
   it("a learner listed in REVIEWER_IDS passes the reviewer check (known gap, see N-15)", async () => {
     const u = await signIn("learner");
     setEnv("REVIEWER_IDS", u.id);
+    await verifySessions(u.id);
     expect((await importGet()).status).toBe(200);
   });
 });
