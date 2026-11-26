@@ -4,9 +4,10 @@ import { z } from "zod";
 import { currentSessionId } from "@/app/auth";
 import { RECOVERY_COUNT, decryptSecret, hashRecovery, newRecoveryCode } from "@/lib/mfa";
 import { verifyTotp } from "@/lib/totp";
+import { normalizeDigits } from "@/lib/digits";
 import { BAD_CODE, auditStmt, err, mfaGuard, ok, triesAllowed } from "@/lib/mfa-routes";
 
-const schema = z.object({ code: z.string().trim().regex(/^\d{6}$/) });
+const schema = z.object({ code: z.string().transform(v => normalizeDigits(v.trim())).pipe(z.string().regex(/^\d{6}$/)) });
 
 /** POST {code}: confirms enrolment (first success, returns the recovery codes once) or verifies a staff session. */
 export async function POST(req: NextRequest) {

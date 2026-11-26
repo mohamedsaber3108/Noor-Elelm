@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from '@/components/full-page-link';
 
 // One source for the closed notice (page state and the refused-request path).
@@ -24,12 +24,13 @@ function returnTarget() {
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const register = mode === 'register';
   const [name, setName] = useState(''), [email, setEmail] = useState(''), [password, setPassword] = useState('');
+  const refused = useRef(false), noticeRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState(''), [busy, setBusy] = useState(false);
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError('');
     try {
       const r = await fetch('/api/auth/' + mode, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(register ? { name, email, password } : { email, password }) });
-      if (!r.ok) { const d = await r.json().catch(() => ({})) as { error?: string }; if (d.error === 'REGISTRATION_CLOSED') { setRegOpen(false); return; } setError(messages[d.error || ''] || 'تعذر إكمال الطلب. حاول مرة أخرى.'); return; }
+      if (!r.ok) { const d = await r.json().catch(() => ({})) as { error?: string }; if (d.error === 'REGISTRATION_CLOSED') { refused.current = true; setRegOpen(false); return; } setError(messages[d.error || ''] || 'تعذر إكمال الطلب. حاول مرة أخرى.'); return; }
       const d = await r.json().catch(() => ({})) as { mfa?: string };
       // Staff finish MFA first; nothing else works for them until then.
       window.location.assign(d.mfa === 'required' ? '/mfa?return_to=' + encodeURIComponent(returnTarget()) : returnTarget());
@@ -44,10 +45,12 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     fetch('/api/auth/session', { cache: 'no-store' }).then(r => r.json()).then((d: { registrationOpen?: boolean }) => setRegOpen(d.registrationOpen !== false)).catch(() => setRegOpen(false));
   }, [register]);
   const closed = register && regOpen === false;
+  // After a refused submit the form is gone: move focus to the notice.
+  useEffect(() => { if (closed && refused.current) noticeRef.current?.focus(); }, [closed]);
   const pending = register && regOpen === null;
   const invite = register && regOpen === true;
   return <main className="page-main"><div className="page-hero"><span className="eyebrow">حسابك</span><h1>{invite ? 'أنشئ حسابًا.' : register ? 'حسابك.' : 'سجّل الدخول.'}</h1><p>{invite ? 'احفظ تقدمك ومفضلتك ونقاط التجربة.' : register ? 'يمكن لأصحاب الحسابات الحالية تسجيل الدخول.' : 'تابع من حيث توقفت.'}</p></div>
-    <div className="correction-panel">{closed ? <div role="status" className="error-note"><p lang="ar" dir="rtl">{CLOSED_AR}</p><p lang="en" dir="ltr">{CLOSED_EN}</p></div> : pending ? null : <form onSubmit={submit}>
+    <div className="correction-panel">{closed ? <div ref={noticeRef} tabIndex={-1} role="status" className="error-note"><p lang="ar" dir="rtl">{CLOSED_AR}</p><p lang="en" dir="ltr">{CLOSED_EN}</p></div> : pending ? <div role="status"><p lang="ar" dir="rtl">جارٍ التحميل…</p><p lang="en" dir="ltr">Loading…</p></div> : <form onSubmit={submit}>
       {register && <label>الاسم<input required minLength={2} maxLength={60} autoComplete="name" value={name} onChange={e => setName(e.target.value)} /></label>}
       <label>البريد الإلكتروني<input required type="email" dir="ltr" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} /></label>
       <label>كلمة المرور<input required type="password" dir="ltr" minLength={register ? 10 : 1} maxLength={200} autoComplete={register ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} /></label>
