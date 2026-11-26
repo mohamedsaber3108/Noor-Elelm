@@ -165,6 +165,50 @@ describe("enrol, verify, recover", () => {
     await enrolNow();
     expect((await post(enroll, undefined)).status).toBe(409);
   });
+  it("a reload before confirming returns the same pending secret", async () => {
+    useKey();
+    await signInUnverified("admin");
+    const a = await (await post(enroll, undefined)).json();
+    const b = await (await post(enroll, undefined)).json();
+    expect(b.secret).toBe(a.secret);
+    expect(b.otpauth).toBe(a.otpauth);
+    expect((await post(verify, { code: await codeFor(a.secret) })).status).toBe(200);
+  });
+  it("enrol cannot replace the secret of an account enabled between its read and its write", async () => {
+    useKey();
+    const u = await signInUnverified("admin");
+    const real = db();
+    const prepare = real.prepare.bind(real);
+    // After the route reads "no row", the account gets enabled (as a second request would do).
+    real.prepare = ((sql: string) => {
+      const st = prepare(sql);
+      if (!sql.startsWith("SELECT secret_enc,enabled_at FROM user_mfa")) return st;
+      const bind = st.bind.bind(st);
+      st.bind = ((...a: unknown[]) => {
+        const b = bind(...a);
+        const first = b.first.bind(b);
+        b.first = (async (...x: []) => {
+          const r = await first(...x);
+          await prepare("INSERT INTO user_mfa(user_id,secret_enc,enabled_at,last_step) VALUES(?,?,?,?)").bind(u.id, "v1$kept$kept", 111, 42).run();
+          return r;
+        }) as typeof b.first;
+        return b;
+      }) as typeof st.bind;
+      return st;
+    }) as typeof real.prepare;
+    try {
+      expect((await post(enroll, undefined)).status).toBe(409);
+    } finally { real.prepare = prepare; }
+    const row = await db().prepare("SELECT secret_enc,enabled_at,last_step FROM user_mfa WHERE user_id=?").bind(u.id).first<{ secret_enc: string; enabled_at: number; last_step: number }>();
+    expect(row).toEqual({ secret_enc: "v1$kept$kept", enabled_at: 111, last_step: 42 });
+  });
+  it("enrol is rate limited on its own bucket, not the verify one", async () => {
+    useKey();
+    await signInUnverified("admin");
+    for (let i = 0; i < 5; i++) expect((await post(enroll, undefined)).status).toBe(200);
+    expect((await post(enroll, undefined)).status).toBe(429);
+    expect((await post(verify, { code: "000000" })).status).toBe(401);
+  });
   it("a new login verifies with a later step; the same step again is a replay", async () => {
     useKey();
     const u = await signInUnverified("reviewer");

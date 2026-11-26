@@ -21,9 +21,9 @@ export async function mfaGuard(req: NextRequest): Promise<{ user: AppUser; ip: s
 }
 
 /** 5 tries per user, then 15 minutes. The per-IP limit is wider so one office network is not locked out by a single user. */
-export async function triesAllowed(userId: string, ip: string) {
-  const a = await rateLimit(`mfa:u:${userId}`, 5, WINDOW_MS);
-  const b = await rateLimit(`mfa:ip:${ip}`, 20, WINDOW_MS);
+export async function triesAllowed(userId: string, ip: string, scope = "mfa") {
+  const a = await rateLimit(`${scope}:u:${userId}`, 5, WINDOW_MS);
+  const b = await rateLimit(`${scope}:ip:${ip}`, 20, WINDOW_MS);
   return a && b;
 }
 
