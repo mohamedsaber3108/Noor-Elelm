@@ -7,6 +7,11 @@ function T({ ar, en }: { ar: string; en: string }) {
   return <><span lang="ar" dir="rtl">{ar}</span><br /><small lang="en" dir="ltr" style={{ display: 'block' }}>{en}</small></>;
 }
 
+// Short bilingual label (button, link, hint): two spans, each with its own language. Never join the two with a slash.
+function B({ ar, en }: { ar: string; en: string }) {
+  return <><span lang="ar">{ar}</span> <span lang="en" dir="ltr">{en}</span></>;
+}
+
 const ERRORS: Record<string, [string, string]> = {
   INVALID_INPUT: ['راجع المدخلات. كلمة المرور 10 أحرف على الأقل.', 'Check your input. The password needs at least 10 characters.'],
   INVALID_OR_EXPIRED_TOKEN: ['الرابط غير صالح أو انتهت مدته أو استُخدم من قبل. اطلب رابطًا جديدًا.', 'This link is not valid, has expired or was already used. Ask for a new one.'],
@@ -56,9 +61,9 @@ export function ForgotPage() {
       : <form onSubmit={submit}>
         <label>البريد الإلكتروني <small lang="en" dir="ltr">Email</small><input required type="email" dir="ltr" autoComplete="email" maxLength={254} value={email} onChange={e => setEmail(e.target.value)} /></label>
         {error && <div role="alert" tabIndex={-1} ref={errRef} className="error-note"><T ar={error[0]} en={error[1]} /></div>}
-        <button className="btn-primary" disabled={busy}>{busy ? 'لحظة… / Wait…' : 'أرسل الرابط / Send link'}</button>
+        <button className="btn-primary" disabled={busy}>{busy ? <B ar="لحظة…" en="Wait…" /> : <B ar="أرسل الرابط" en="Send link" />}</button>
       </form>}
-    <Link href="/login">العودة لتسجيل الدخول / Back to sign in</Link>
+    <Link href="/login"><B ar="العودة لتسجيل الدخول" en="Back to sign in" /></Link>
     </div></main>;
 }
 
@@ -78,14 +83,14 @@ export function ResetPage() {
   }
   return <main className="page-main"><div className="page-hero"><span className="eyebrow">حسابك</span><h1>كلمة مرور جديدة.</h1><p lang="en" dir="ltr">Choose a new password.</p></div>
     <div className="correction-panel">{done
-      ? <div role="status" tabIndex={-1} ref={doneRef}><p><T ar="تم تغيير كلمة المرور وإنهاء كل الجلسات. سجّل الدخول بكلمة المرور الجديدة." en="Your password was changed and all sessions were ended. Sign in with the new password." /></p><Link href="/login">تسجيل الدخول / Sign in</Link></div>
-      : ready && !token ? <div role="alert" className="error-note"><p><T ar="الرابط ناقص. افتح الرابط من الرسالة كاملًا، أو اطلب رابطًا جديدًا." en="The link is incomplete. Open the whole link from the email, or ask for a new one." /></p><Link href="/forgot">طلب رابط جديد / Ask for a new link</Link></div>
+      ? <div role="status" tabIndex={-1} ref={doneRef}><p><T ar="تم تغيير كلمة المرور وإنهاء كل الجلسات. سجّل الدخول بكلمة المرور الجديدة." en="Your password was changed and all sessions were ended. Sign in with the new password." /></p><Link href="/login"><B ar="تسجيل الدخول" en="Sign in" /></Link></div>
+      : ready && !token ? <div role="alert" className="error-note"><p><T ar="الرابط ناقص. افتح الرابط من الرسالة كاملًا، أو اطلب رابطًا جديدًا." en="The link is incomplete. Open the whole link from the email, or ask for a new one." /></p><Link href="/forgot"><B ar="طلب رابط جديد" en="Ask for a new link" /></Link></div>
       : <form onSubmit={submit}>
         <label>كلمة المرور الجديدة <small lang="en" dir="ltr">New password</small><input required type={show ? 'text' : 'password'} dir="ltr" minLength={10} maxLength={200} autoComplete="new-password" aria-describedby="pw-hint" value={password} onChange={e => setPassword(e.target.value)} /></label>
-        <small id="pw-hint">10 أحرف على الأقل / At least 10 characters.</small>
-        <button type="button" className="btn-outline" aria-pressed={show} onClick={() => setShow(s => !s)}>إظهار كلمة المرور / Show password</button>
+        <small id="pw-hint"><B ar="10 أحرف على الأقل." en="At least 10 characters." /></small>
+        <button type="button" className="btn-outline" aria-pressed={show} onClick={() => setShow(s => !s)}><B ar="إظهار كلمة المرور" en="Show password" /></button>
         {error && <div role="alert" tabIndex={-1} ref={errRef} className="error-note"><T ar={error[0]} en={error[1]} /></div>}
-        <button className="btn-primary" disabled={busy || !token}>{busy ? 'لحظة… / Wait…' : 'تغيير كلمة المرور / Change password'}</button>
+        <button className="btn-primary" disabled={busy || !token}>{busy ? <B ar="لحظة…" en="Wait…" /> : <B ar="تغيير كلمة المرور" en="Change password" />}</button>
       </form>}
     </div></main>;
 }
@@ -104,8 +109,8 @@ export function VerifyEmailPage() {
       {state === 'ok' && <p role="status"><T ar="تم تأكيد بريدك الإلكتروني." en="Your email is confirmed." /></p>}
       {state === 'missing' && <p role="alert" className="error-note"><T ar="الرابط ناقص. افتح الرابط من الرسالة كاملًا." en="The link is incomplete. Open the whole link from the email." /></p>}
       {state === 'fail' && <p role="alert" className="error-note"><T ar={error[0]} en={error[1]} /></p>}
-      {state === 'wait' && <button className="btn-primary" onClick={confirm} disabled={!token}>تأكيد البريد / Confirm email</button>}
-      <Link href="/account">حسابي / My account</Link>
+      {state === 'wait' && <button className="btn-primary" onClick={confirm} disabled={!token}><B ar="تأكيد البريد" en="Confirm email" /></button>}
+      <Link href="/account"><B ar="حسابي" en="My account" /></Link>
     </div></main>;
 }
 
@@ -123,9 +128,9 @@ export function VerifyBanner() {
     setBusy(false);
     setMsg(r.ok ? { t: ['أرسلنا رسالة التأكيد إن كان البريد صالحًا.', 'We sent the confirmation email if the address is valid.'], ok: true } : { t: errText(r), ok: false });
   }
-  return <div className="correction-panel" role="region" aria-label="تأكيد البريد / Email confirmation">
+  return <div className="correction-panel" role="region" aria-label="تأكيد البريد الإلكتروني">
     <p><T ar="بريدك الإلكتروني غير مؤكَّد بعد. يمكنك متابعة استخدام الموقع." en="Your email is not confirmed yet. You can keep using the site." /></p>
-    <button type="button" className="btn-outline" onClick={again} disabled={busy}>إرسال مرة أخرى / Send again</button>
+    <button type="button" className="btn-outline" onClick={again} disabled={busy}><B ar="إرسال مرة أخرى" en="Send again" /></button>
     {msg && <p role={msg.ok ? 'status' : 'alert'} className={msg.ok ? '' : 'error-note'}><T ar={msg.t[0]} en={msg.t[1]} /></p>}
   </div>;
 }
