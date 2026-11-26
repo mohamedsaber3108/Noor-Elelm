@@ -4,6 +4,7 @@ import { z } from "zod";
 import { currentSessionId } from "@/app/auth";
 import { matchesRecovery } from "@/lib/mfa";
 import { BAD_CODE, auditStmt, err, mfaGuard, ok, triesAllowed } from "@/lib/mfa-routes";
+import { AUDIT_UNAVAILABLE, runAudited } from "@/lib/audit";
 
 const schema = z.object({ code: z.string().trim().min(8).max(24) });
 
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
   if (!(await triesAllowed(uid, g.ip))) return err("RATE_LIMITED", 429);
   const parsed = schema.safeParse(await req.json().catch(() => null));
   const fail = async () => {
-    await auditStmt(uid, "MFA_FAILED", uid, { method: "recovery" }).run();
+    if (!(await runAudited(db, async () => [await auditStmt(g.user, g.ip, "MFA_FAILED", { method: "recovery" })]))) return err(AUDIT_UNAVAILABLE, 503);
     return err(BAD_CODE, 401);
   };
   if (!parsed.success) return fail();
@@ -27,9 +28,11 @@ export async function POST(req: NextRequest) {
   const now = Date.now();
   const spent = await db.prepare("UPDATE mfa_recovery_codes SET used_at=? WHERE id=? AND used_at IS NULL").bind(now, hit).run();
   if (spent.meta.changes !== 1) return fail();
-  await db.batch([
-    db.prepare("UPDATE sessions SET mfa_verified_at=? WHERE id=?").bind(now, await currentSessionId()),
-    auditStmt(uid, "MFA_RECOVERY_USED", uid, { remaining: rows.length - 1 }),
+  const sid = await currentSessionId();
+  const done = await runAudited(db, async () => [
+    db.prepare("UPDATE sessions SET mfa_verified_at=? WHERE id=?").bind(now, sid),
+    await auditStmt(g.user, g.ip, "MFA_RECOVERY_USED", { remaining: rows.length - 1 }),
   ]);
+  if (!done) return err(AUDIT_UNAVAILABLE, 503);
   return ok({ remaining: rows.length - 1 });
 }

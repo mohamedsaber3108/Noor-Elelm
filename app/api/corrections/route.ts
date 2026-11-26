@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { env } from 'cloudflare:workers';
-import {getCurrentUser,isReviewer} from '@/app/auth';
+import {clientIp,getCurrentUser,isReviewer} from '@/app/auth';
+import {AUDIT_UNAVAILABLE,auditStatement,runAudited} from '@/lib/audit';
 import records from '@/data/archive-summaries.json';
 
 const known = new Set((records as {id:string}[]).map(x=>x.id));
@@ -17,8 +18,9 @@ export async function POST(req:NextRequest){
   const recent=await env.DB.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE actor_id=? AND action='CORRECTION_REPORT' AND created_at>=datetime('now','-1 day')").bind(u.userId).first<{n:number}>();
   if((recent?.n||0)>=5)return NextResponse.json({error:'DAILY_LIMIT'},{status:429});
   const id=crypto.randomUUID();
-  await env.DB.prepare('INSERT INTO audit_events(id,actor_id,action,target_id,detail_json) VALUES(?,?,?,?,?)')
-    .bind(id,u.userId,'CORRECTION_REPORT',contentId,JSON.stringify({message,sourceUrl,status:'OPEN'})).run();
+  const db=env.DB;
+  const done=await runAudited(db,async()=>[await auditStatement(db,{id,actorId:u.userId,actorRole:u.role,action:'CORRECTION_REPORT',targetId:contentId,detail:{message,sourceUrl,status:'OPEN'},source:clientIp(req)})]);
+  if(!done)return NextResponse.json({error:AUDIT_UNAVAILABLE},{status:503});
   return NextResponse.json({id,status:'RECEIVED'}, {status:201});
 }
 

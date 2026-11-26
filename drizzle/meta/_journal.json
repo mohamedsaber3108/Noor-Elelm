@@ -50,6 +50,13 @@
       "when": 1795728258694,
       "tag": "0006_email_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1795730625302,
+      "tag": "0007_audit_chain",
+      "breakpoints": true
     }
   ]
 }

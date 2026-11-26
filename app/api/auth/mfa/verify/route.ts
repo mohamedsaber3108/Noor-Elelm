@@ -6,6 +6,7 @@ import { RECOVERY_COUNT, decryptSecret, hashRecovery, newRecoveryCode } from "@/
 import { verifyTotp } from "@/lib/totp";
 import { normalizeDigits } from "@/lib/digits";
 import { BAD_CODE, auditStmt, err, mfaGuard, ok, triesAllowed } from "@/lib/mfa-routes";
+import { AUDIT_UNAVAILABLE, runAudited } from "@/lib/audit";
 
 const schema = z.object({ code: z.string().transform(v => normalizeDigits(v.trim())).pipe(z.string().regex(/^\d{6}$/)) });
 
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
   const row = await db.prepare("SELECT secret_enc,enabled_at,last_step FROM user_mfa WHERE user_id=?").bind(uid).first<{ secret_enc: string; enabled_at: number | null; last_step: number | null }>();
   if (!row) return err("MFA_NOT_ENROLLED", 409);
   const fail = async (why: string) => {
-    await auditStmt(uid, "MFA_FAILED", uid, { method: "totp", why }).run();
+    if (!(await runAudited(db, async () => [await auditStmt(g.user, g.ip, "MFA_FAILED", { method: "totp", why })]))) return err(AUDIT_UNAVAILABLE, 503);
     return err(BAD_CODE, 401);
   };
   if (!parsed.success) return fail("format");
@@ -43,7 +44,6 @@ export async function POST(req: NextRequest) {
       stmts.push(db.prepare("INSERT INTO mfa_recovery_codes(id,user_id,code_hash,used_at) VALUES(?,?,?,NULL)").bind(crypto.randomUUID(), uid, await hashRecovery(c)));
     }
   }
-  stmts.push(auditStmt(uid, first ? "MFA_ENROLLED" : "MFA_VERIFIED", uid));
-  await db.batch(stmts);
+  if (!(await runAudited(db, async () => [...stmts, await auditStmt(g.user, g.ip, first ? "MFA_ENROLLED" : "MFA_VERIFIED")]))) return err(AUDIT_UNAVAILABLE, 503);
   return ok(first ? { enrolled: true, recoveryCodes: codes } : { enrolled: false });
 }
