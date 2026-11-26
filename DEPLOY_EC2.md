@@ -51,6 +51,22 @@ Roll back manually: `sudo noor-deploy --rollback`.
 
 Session cookies switch to `Secure` automatically once requests arrive over HTTPS.
 
+nginx must pass `X-Forwarded-Proto` (and `Host`). The write-route Origin check compares the scheme too, so a missing `X-Forwarded-Proto` behind HTTPS makes browser writes fail with `403 BAD_ORIGIN`.
+
+## Content Security Policy (`CSP_MODE`)
+
+The app sends a `Content-Security-Policy-Report-Only` header by default. Setting `CSP_MODE` to `enforce` sends `Content-Security-Policy` instead. Any other value stays report-only. There is no report endpoint: violations show only in the browser console.
+
+Rollout:
+
+1. Deploy with `CSP_MODE` unset (report-only) to staging.
+2. Open the main pages in Arabic and English with the browser console open. Note every "Content Security Policy" message.
+3. Fix or allow each one in `worker/index.ts`. Repeat step 2 until the console is clean.
+4. Set `CSP_MODE=enforce` on staging and check again.
+5. Set `CSP_MODE=enforce` on production. To roll back, unset `CSP_MODE`.
+
+Fonts and styles still load from Google until the font question (Q22) is answered. `script-src` allows `'unsafe-inline'` because the renderer writes inline bootstrap scripts without a nonce.
+
 ## Operations
 
 | Task | Command |
