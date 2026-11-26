@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { env } from "cloudflare:workers";
 
-export type AppUser = { userId: string; email: string; displayName: string; fullName: string | null; role: string; mfaVerified: boolean };
+export type AppUser = { userId: string; email: string; displayName: string; fullName: string | null; role: string; mfaVerified: boolean; emailVerified: boolean };
 
 export const SESSION_COOKIE = "nai_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -71,10 +71,10 @@ export async function getCurrentUser(opts: { allowUnverified?: boolean } = {}): 
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token || token.length > 128) return null;
   const row = await env.DB.prepare(
-    "SELECT u.id,u.email,u.display_name,u.role,s.mfa_verified_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires_at>?",
-  ).bind(await sha256Hex(token), Date.now()).first<{ id: string; email: string; display_name: string; role: string; mfa_verified_at: number | null }>();
+    "SELECT u.id,u.email,u.display_name,u.role,u.email_verified_at,s.mfa_verified_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires_at>?",
+  ).bind(await sha256Hex(token), Date.now()).first<{ id: string; email: string; display_name: string; role: string; email_verified_at: number | null; mfa_verified_at: number | null }>();
   if (!row) return null;
-  const user: AppUser = { userId: row.id, email: row.email, displayName: row.display_name, fullName: row.display_name, role: row.role, mfaVerified: row.mfa_verified_at != null };
+  const user: AppUser = { userId: row.id, email: row.email, displayName: row.display_name, fullName: row.display_name, role: row.role, mfaVerified: row.mfa_verified_at != null, emailVerified: row.email_verified_at != null };
   if (isStaff(user) && !user.mfaVerified && !opts.allowUnverified) return null;
   return user;
 }

@@ -72,6 +72,7 @@ export async function DELETE(req: NextRequest) {
     env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(id),
     env.DB.prepare("DELETE FROM user_mfa WHERE user_id=?").bind(id),
     env.DB.prepare("DELETE FROM mfa_recovery_codes WHERE user_id=?").bind(id),
+    env.DB.prepare("DELETE FROM auth_tokens WHERE user_id=?").bind(id),
     env.DB.prepare("DELETE FROM bookmarks WHERE user_id=?").bind(id),
     env.DB.prepare("DELETE FROM progress WHERE user_id=?").bind(id),
     env.DB.prepare("DELETE FROM quiz_served WHERE user_id=?").bind(id),
