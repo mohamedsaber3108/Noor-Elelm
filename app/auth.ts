@@ -118,3 +118,20 @@ export function clientIp(req: Request): string {
   }
   return req.headers.get("cf-connecting-ip") || "unknown";
 }
+
+export type RegistrationMode = "closed" | "allowlist" | "open";
+
+/** Sign-up policy from REGISTRATION_MODE. Anything unset or unknown is `closed` (OD-04c). */
+export function registrationMode(): RegistrationMode {
+  const v = String((env as unknown as Record<string, unknown>).REGISTRATION_MODE || "").trim().toLowerCase();
+  return v === "open" || v === "allowlist" ? v : "closed";
+}
+
+/** True when the current mode lets this email register. REGISTRATION_ALLOWLIST is a comma list of emails. */
+export function registrationAllowed(email: string): boolean {
+  const mode = registrationMode();
+  if (mode === "open") return true;
+  if (mode !== "allowlist") return false;
+  const list = String((env as unknown as Record<string, unknown>).REGISTRATION_ALLOWLIST || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  return list.includes(email.trim().toLowerCase());
+}

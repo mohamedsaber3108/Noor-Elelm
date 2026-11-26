@@ -8,6 +8,7 @@ const messages: Record<string, string> = {
   RATE_LIMITED: 'محاولات كثيرة. انتظر قليلًا ثم حاول مرة أخرى.',
   INVALID_INPUT: 'راجع المدخلات: كلمة المرور 10 أحرف على الأقل والاسم حرفان على الأقل.',
   DATABASE_UNAVAILABLE: 'الخدمة غير متاحة مؤقتًا. حاول لاحقًا.',
+  REGISTRATION_CLOSED: 'التسجيل مغلق مؤقتًا. يمكن لأصحاب الحسابات الحالية تسجيل الدخول.',
   BAD_ORIGIN: 'تعذر التحقق من مصدر الطلب. أعد تحميل الصفحة.',
 };
 
@@ -30,15 +31,22 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   }
   const [search, setSearch] = useState('');
   useEffect(() => { setSearch(window.location.search); }, []);
+  // null while unknown: the form stays visible. The server refuses sign-up anyway when closed.
+  const [regOpen, setRegOpen] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!register) return;
+    fetch('/api/auth/session', { cache: 'no-store' }).then(r => r.json()).then((d: { registrationOpen?: boolean }) => setRegOpen(d.registrationOpen !== false)).catch(() => {});
+  }, [register]);
+  const closed = register && regOpen === false;
   return <main className="page-main"><div className="page-hero"><span className="eyebrow">حسابك</span><h1>{register ? 'أنشئ حسابًا.' : 'سجّل الدخول.'}</h1><p>{register ? 'احفظ تقدمك ومفضلتك ونقاط التجربة.' : 'تابع من حيث توقفت.'}</p></div>
-    <div className="correction-panel"><form onSubmit={submit}>
+    <div className="correction-panel">{closed ? <div role="status" className="error-note"><p lang="ar" dir="rtl">التسجيل مغلق مؤقتًا. يمكن لأصحاب الحسابات الحالية تسجيل الدخول.</p><p lang="en" dir="ltr">Registration is temporarily closed. Existing account holders can still sign in.</p></div> : <form onSubmit={submit}>
       {register && <label>الاسم<input required minLength={2} maxLength={60} autoComplete="name" value={name} onChange={e => setName(e.target.value)} /></label>}
       <label>البريد الإلكتروني<input required type="email" dir="ltr" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} /></label>
       <label>كلمة المرور<input required type="password" dir="ltr" minLength={register ? 10 : 1} maxLength={200} autoComplete={register ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} /></label>
       {register && <small>10 أحرف على الأقل.</small>}
       {error && <p role="alert" className="error-note">{error}</p>}
       <button className="btn-primary" disabled={busy}>{busy ? 'لحظة…' : register ? 'إنشاء الحساب' : 'دخول'}</button>
-    </form>
+    </form>}
     {register ? <Link href={'/login' + search}>لدي حساب. تسجيل الدخول</Link> : <Link href={'/register' + search}>ليس لدي حساب. إنشاء حساب</Link>}
     </div></main>;
 }

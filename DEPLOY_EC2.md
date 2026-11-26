@@ -51,6 +51,15 @@ Roll back manually: `sudo noor-deploy --rollback`.
 
 Session cookies switch to `Secure` automatically once requests arrive over HTTPS.
 
+## Sign-up switch
+
+Sign-up is **closed unless you open it**. Two settings, added as extra `--var` lines on the `ExecStart` of the systemd unit, next to `--var TRUST_PROXY_HEADER:x-real-ip`:
+
+- `REGISTRATION_MODE`: `closed` (default when unset or unknown), `allowlist` or `open`.
+- `REGISTRATION_ALLOWLIST`: comma-separated emails; used only in `allowlist` mode.
+
+Example line: `--var REGISTRATION_MODE:allowlist --var REGISTRATION_ALLOWLIST:<comma list>`. Then `sudo systemctl daemon-reload` and `sudo systemctl restart noor-al-ilm`. Login is never affected.
+
 ## Operations
 
 | Task | Command |
