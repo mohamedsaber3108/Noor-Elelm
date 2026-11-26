@@ -38,7 +38,8 @@ export async function consumeToken(token: string, kind: TokenKind): Promise<stri
 /** Link base from MAIL_LINK_BASE only. It is never taken from request headers (host header poisoning). */
 export function linkBase(): string | null {
   const v = String((env as unknown as Record<string, unknown>).MAIL_LINK_BASE || "").trim().replace(/\/+$/, "");
-  return /^https?:\/\/[^\s/]+$/.test(v) ? v : null;
+  // https only; plain http is for local tests (localhost or 127.0.0.1), because a link over http sends the token in clear text.
+  return /^(https:\/\/[^\s/]+|http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?)$/.test(v) ? v : null;
 }
 
 const RLM = "\u200F";

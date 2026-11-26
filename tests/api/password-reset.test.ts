@@ -4,6 +4,7 @@ import { POST as resetConfirm } from "@/app/api/auth/password-reset/confirm/rout
 import { POST as verifyRequest } from "@/app/api/auth/verify-email/request/route";
 import { POST as verifyConfirm } from "@/app/api/auth/verify-email/confirm/route";
 import { POST as authPost } from "@/app/api/auth/[action]/route";
+import { DELETE as accountDelete } from "@/app/api/account/route";
 import { SESSION_COOKIE, createSession, verifyPassword } from "@/app/auth";
 import { createToken } from "@/lib/auth-tokens";
 import { sendMail, setTestOutbox, type Mail } from "@/lib/mail";
@@ -108,6 +109,36 @@ describe("password reset request", () => {
     expect((await askReset(u.email)).status).toBe(200);
     expect(box).toHaveLength(0);
     expect(await count("SELECT COUNT(*) AS n FROM auth_tokens")).toBe(0);
+  });
+});
+
+describe("mail link base", () => {
+  it("accepts https, and http only for localhost or 127.0.0.1", async () => {
+    const base = async (v: string, ip: string) => {
+      const u = await seedUser("learner"); // a new address each time: the limit is 5 per address
+      setEnv("MAIL_LINK_BASE", v);
+      const n = box.length;
+      await askReset(u.email, ip);
+      return box.length - n;
+    };
+    expect(await base("http://noor.test", "10.0.5.1")).toBe(0);
+    expect(await base("http://localhost.evil.test", "10.0.5.2")).toBe(0);
+    expect(await base("ftp://noor.test", "10.0.5.3")).toBe(0);
+    expect(await base("http://localhost:3000", "10.0.5.4")).toBe(1);
+    expect(await base("http://127.0.0.1:8787", "10.0.5.5")).toBe(1);
+    expect(await base("https://noor.test", "10.0.5.6")).toBe(1);
+  });
+});
+
+describe("account delete", () => {
+  it("removes the auth_tokens rows of the deleted user", async () => {
+    const u = await signIn("learner");
+    await createToken(u.id, "reset");
+    await createToken(u.id, "verify");
+    expect(await count("SELECT COUNT(*) AS n FROM auth_tokens WHERE user_id=?", u.id)).toBe(2);
+    const res = await accountDelete(call("DELETE", "/api/account", { password: PASSWORD }));
+    expect(res.status).toBe(200);
+    expect(await count("SELECT COUNT(*) AS n FROM auth_tokens WHERE user_id=?", u.id)).toBe(0);
   });
 });
 
