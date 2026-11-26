@@ -67,7 +67,7 @@ describe("/api/admin/import", () => {
     }
     expect((await importPost(req("POST", "/api/admin/import", "{bad") as never)).status).toBe(400);
   });
-  it.fails("BUG: a cross-origin POST should be refused with 403 BAD_ORIGIN (route has no sameOrigin check)", async () => {
+  it("refuses a cross-origin POST with 403 BAD_ORIGIN", async () => {
     await signIn("reviewer");
     expect((await importPost(req("POST", "/api/admin/import", { offset: 0, limit: 1 }, EVIL) as never)).status).toBe(403);
   });
@@ -121,7 +121,7 @@ describe("/api/admin/content", () => {
     expect((await put({ id, revision: 1, restoreRevision: 99 })).status).toBe(404);
     expect((await contentPut(req("PUT", "/api/admin/content", "{bad") as never)).status).toBe(400);
   });
-  it.fails("BUG: a cross-origin PUT should be refused with 403 BAD_ORIGIN (route has no sameOrigin check)", async () => {
+  it("refuses a cross-origin PUT with 403 BAD_ORIGIN", async () => {
     const id = await seed();
     expect((await contentPut(req("PUT", "/api/admin/content", { id, title: "x", body: "y", revision: 1 }, EVIL) as never)).status).toBe(403);
   });
@@ -159,7 +159,7 @@ describe("/api/admin/review", () => {
     await reviewPost(req("POST", "/api/admin/review", good) as never);
     expect((await db().prepare("SELECT role FROM reviews").first<{ role: string }>())?.role).toBe("admin");
   });
-  it.fails("BUG: a cross-origin POST should be refused with 403 BAD_ORIGIN (route has no sameOrigin check)", async () => {
+  it("refuses a cross-origin POST with 403 BAD_ORIGIN", async () => {
     await signIn("reviewer");
     expect((await reviewPost(req("POST", "/api/admin/review", good, EVIL) as never)).status).toBe(403);
   });

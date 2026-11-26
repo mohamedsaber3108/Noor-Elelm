@@ -85,7 +85,7 @@ describe("/api/user-content", () => {
     env.DB = undefined;
     expect((await ucGet()).status).toBe(401);
   });
-  it.fails("BUG: a cross-origin POST should be refused with 403 BAD_ORIGIN (route has no sameOrigin check)", async () => {
+  it("refuses a cross-origin POST with 403 BAD_ORIGIN", async () => {
     await signIn("learner");
     expect((await ucPost(call("POST", "/api/user-content", { id: ID, action: "bookmark" }, EVIL))).status).toBe(403);
   });
@@ -133,7 +133,7 @@ describe("/api/corrections", () => {
     await signIn("admin");
     expect((await corrGet()).status).toBe(200);
   });
-  it.fails("BUG: a cross-origin POST should be refused with 403 BAD_ORIGIN (route has no sameOrigin check)", async () => {
+  it("refuses a cross-origin POST with 403 BAD_ORIGIN", async () => {
     await signIn("learner");
     expect((await corrPost(call("POST", "/api/corrections", good, EVIL))).status).toBe(403);
   });
