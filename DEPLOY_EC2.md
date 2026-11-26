@@ -60,6 +60,8 @@ Sign-up is **closed unless you open it**. Two settings, added as extra `--var` l
 
 Example line: `--var REGISTRATION_MODE:allowlist --var REGISTRATION_ALLOWLIST:<comma list>`. Then `sudo systemctl daemon-reload` and `sudo systemctl restart noor-al-ilm`. Login is never affected.
 
+**Warning about `allowlist`:** it lets a stranger test whether an address is listed (a refused request answers differently from an accepted one), and it does not verify email, so whoever registers a listed address first owns that account. Keep `closed` until email verification exists.
+
 ## Operations
 
 | Task | Command |

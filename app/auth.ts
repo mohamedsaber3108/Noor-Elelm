@@ -127,6 +127,9 @@ export function registrationMode(): RegistrationMode {
   return v === "open" || v === "allowlist" ? v : "closed";
 }
 
+// Limits of `allowlist` (review PR #2, findings 1-2): a stranger can test whether an address is listed
+// (403 vs other answers), and email is not verified, so the first person to register a listed address owns it.
+// Keep `closed` until email verification exists (OD-04b). Behaviour is unchanged on purpose.
 /** True when the current mode lets this email register. REGISTRATION_ALLOWLIST is a comma list of emails. */
 export function registrationAllowed(email: string): boolean {
   const mode = registrationMode();
