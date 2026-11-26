@@ -166,6 +166,27 @@ describe("registration mode (OD-04c)", () => {
     setEnv("REGISTRATION_ALLOWLIST", " , ");
     expect((await register()).status).toBe(403);
   });
+  it("allowlist matches the exact address only: plus-address and look-alikes are refused", async () => {
+    setEnv("REGISTRATION_MODE", "allowlist");
+    setEnv("REGISTRATION_ALLOWLIST", "a@x.test");
+    for (const email of ["a+1@x.test", "\u0410@x.test", "\uFF21@x.test", "a@x.test.evil"]) {
+      const res = await register({ ...reg, email });
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "REGISTRATION_CLOSED" });
+    }
+    expect(await users()).toBe(0);
+    expect((await register({ ...reg, email: "A@X.test" })).status).toBe(201);
+  });
+  it("no other route creates users: admin users and account export no create handler", async () => {
+    const admin = await import("@/app/api/admin/users/route");
+    const account = await import("@/app/api/account/route");
+    expect(Object.keys(admin).sort()).toEqual(["DELETE", "GET", "PUT"]);
+    expect(Object.keys(account).sort()).toEqual(["DELETE", "GET", "PATCH", "POST"]);
+    const { readFileSync } = await import("node:fs");
+    for (const f of ["../../app/api/admin/users/route.ts", "../../app/api/account/route.ts"]) {
+      expect(readFileSync(new URL(f, import.meta.url), "utf8")).not.toMatch(/INSERT\s+INTO\s+users/i);
+    }
+  });
   it("a refused request does not use the rate limit", async () => {
     for (let i = 0; i < 7; i++) await register();
     expect(await count("SELECT COUNT(*) AS n FROM rate_limits")).toBe(0);
