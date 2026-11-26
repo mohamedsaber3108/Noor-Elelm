@@ -15,6 +15,7 @@ import { GET as archiveGet } from "@/app/api/archive/route";
 import records from "@/data/archive-records.json";
 import { setCookie } from "../mocks/next-headers";
 import { SESSION_COOKIE, createSession } from "@/app/auth";
+import { normalizeDigits } from "@/lib/digits";
 import { decryptSecret, encryptSecret, hashRecovery, matchesRecovery } from "@/lib/mfa";
 import { base32Decode, base32Encode, stepAt, totpAt, verifyTotp } from "@/lib/totp";
 import { PASSWORD, authCtx, call, count, db, seedUser, setEnv, signIn, signInUnverified, verifySessions, EVIL } from "../helpers";
@@ -160,6 +161,23 @@ describe("enrol, verify, recover", () => {
     expect((await usersGet(call("GET", "/api/admin/users") as never)).status).toBe(200);
     expect(await count("SELECT COUNT(*) AS n FROM mfa_recovery_codes WHERE user_id=?", u.id)).toBe(10);
     expect(await count("SELECT COUNT(*) AS n FROM audit_events WHERE action='MFA_ENROLLED' AND actor_id=?", u.id)).toBe(1);
+  });
+  const toDigits = (c: string, zero: number) => [...c].map(d => String.fromCharCode(zero + Number(d))).join("");
+  it("accepts Arabic-Indic digits: ٣٤٥٦٧٨ is read as 345678", async () => {
+    expect(normalizeDigits("٣٤٥٦٧٨")).toBe("345678");
+    useKey();
+    await signInUnverified("admin");
+    const e = await (await post(enroll, undefined)).json();
+    const v = await post(verify, { code: toDigits(await codeFor(e.secret), 0x0660) });
+    expect(v.status).toBe(200);
+    expect((await v.json()).recoveryCodes).toHaveLength(10);
+  });
+  it("accepts Persian digits: ۳۴۵۶۷۸ is read as 345678", async () => {
+    expect(normalizeDigits("۳۴۵۶۷۸")).toBe("345678");
+    useKey();
+    await signInUnverified("reviewer");
+    const e = await (await post(enroll, undefined)).json();
+    expect((await post(verify, { code: ` ${toDigits(await codeFor(e.secret), 0x06F0)} ` })).status).toBe(200);
   });
   it("refuses a cross-site enrol and a second enrolment", async () => {
     useKey();

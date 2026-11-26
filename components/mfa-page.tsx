@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import Link from '@/components/full-page-link';
+import { normalizeDigits } from '@/lib/digits';
 
 type Step = 'loading' | 'signin' | 'notneeded' | 'enroll' | 'verify' | 'recover' | 'codes' | 'unconfigured' | 'failed';
 
@@ -68,7 +69,7 @@ export function MfaPage() {
   const status = shown && <p role="alert" className="error-note"><Bi ar={shown[0]} en={shown[1]} /></p>;
   const title = <div className="page-hero"><span className="eyebrow">حسابك · Your account</span><h1 ref={heading} tabIndex={-1}>التحقق بخطوتين</h1><p lang="en" dir="ltr">Two-step sign-in for reviewers and admins.</p></div>;
 
-  if (step === 'loading') return <main className="page-main">{title}<p role="status">…</p></main>;
+  if (step === 'loading') return <main className="page-main">{title}<p role="status"><Bi ar="جارٍ التحميل…" en="Loading…" /></p></main>;
   if (step === 'signin') return <main className="page-main">{title}<p><Link href="/login?return_to=%2Fmfa">سجّل الدخول · Sign in</Link></p></main>;
   if (step === 'notneeded') return <main className="page-main">{title}<p><Bi ar="حسابك لا يحتاج هذه الخطوة." en="Your account does not need this step." /></p><Link href="/">الرئيسية · Home</Link></main>;
   if (step === 'unconfigured' || step === 'failed') {
@@ -89,7 +90,7 @@ export function MfaPage() {
   const recover = step === 'recover';
   return <main className="page-main">{title}<div className="correction-panel">
     {step === 'enroll' && <>
-      <p><Bi ar="١. افتح تطبيق المصادقة وامسح الرمز، أو اكتب المفتاح يدويًا." en="1. Open your authenticator app and scan the code, or type the key by hand." /></p>
+      <p id="mfa-step1"><Bi ar="١. افتح تطبيق المصادقة وامسح الرمز، أو اكتب المفتاح يدويًا." en="1. Open your authenticator app and scan the code, or type the key by hand." /></p>
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
         <QRCodeSVG value={uri} size={176} marginSize={2} role="img" aria-label="رمز QR لتطبيق المصادقة · QR code for the authenticator app" />
         <div><span>المفتاح · Key</span><br /><code dir="ltr" style={{ fontSize: 18, letterSpacing: 2, userSelect: 'all', overflowWrap: 'anywhere' }}>{secret}</code></div>
@@ -98,11 +99,11 @@ export function MfaPage() {
     </>}
     <form onSubmit={submit}>
       <label>{recover ? <Bi ar="رمز الاسترداد" en="Recovery code" /> : <Bi ar="الرمز المكوّن من ٦ أرقام" en="6-digit code" />}
-        <input ref={input} required dir="ltr" value={code} {...(recover ? {} : { autoComplete: 'one-time-code' })} aria-invalid={!!error} aria-describedby={error ? 'mfa-err' : undefined}
+        <input ref={input} required dir="ltr" value={code} {...(recover ? {} : { autoComplete: 'one-time-code' })} aria-invalid={!!error} aria-describedby={[step === 'enroll' ? 'mfa-step1' : '', error ? 'mfa-err' : ''].filter(Boolean).join(' ') || undefined}
           {...(recover ? { maxLength: 24 } : { inputMode: 'numeric' as const, pattern: '[0-9]{6}', maxLength: 12 })}
-          onChange={e => setCode(recover ? e.target.value : e.target.value.replace(/\D/g, '').slice(0, 6))} /></label>
+          onChange={e => setCode(recover ? e.target.value : normalizeDigits(e.target.value).replace(/\D/g, '').slice(0, 6))} /></label>
       <div id="mfa-err">{status}</div>
-      <button className="btn-primary" disabled={busy}>{busy ? '…' : 'تأكيد · Confirm'}</button>
+      <button className="btn-primary" disabled={busy}>{busy ? 'جارٍ التحميل · Loading…' : 'تأكيد · Confirm'}</button>
     </form>
     {step !== 'enroll' && <button type="button" className="btn-outline" onClick={() => { setError(''); setCode(''); setStep(recover ? 'verify' : 'recover'); }}>{recover ? 'استخدم رمز التطبيق · Use the app code' : 'فقدت جهازي · I lost my device'}</button>}
   </div></main>;
