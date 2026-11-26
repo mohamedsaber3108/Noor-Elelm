@@ -7,7 +7,8 @@ export const PASSWORD = "correct-horse-battery";
 let hashed: Promise<string> | undefined;
 
 type Role = "learner" | "reviewer" | "admin";
-export const db = () => env.DB as import("./d1").D1Stub;
+export const db = () => env.DB as unknown as import("./d1").D1Stub;
+export const setEnv = (key: string, value: unknown) => void ((env as unknown as Record<string, unknown>)[key] = value);
 
 /** Inserts a user (password PASSWORD) and returns its id. */
 export async function seedUser(role: Role, email = `${role}-${crypto.randomUUID().slice(0, 8)}@example.test`) {

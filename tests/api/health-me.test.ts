@@ -17,7 +17,7 @@ describe("GET /api/health", () => {
     expect(await res.json()).toEqual({ status: "degraded", db: "unbound" });
   });
   it("returns 503 when the database query fails", async () => {
-    env.DB = { prepare: () => { throw new Error("boom"); } };
+    env.DB = { prepare: () => { throw new Error("boom"); } } as never;
     const res = await health();
     expect(res.status).toBe(503);
     expect((await res.json()).db).toBe("error");

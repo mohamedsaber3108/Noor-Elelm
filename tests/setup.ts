@@ -5,7 +5,7 @@ import { clearCookies } from "./mocks/next-headers";
 
 // Fresh migrated database and no cookies before every test.
 beforeEach(() => {
-  env.DB = new D1Stub(newDb());
-  delete env.REVIEWER_IDS;
+  env.DB = new D1Stub(newDb()) as unknown as D1Database;
+  delete (env as unknown as Record<string, unknown>).REVIEWER_IDS;
   clearCookies();
 });
