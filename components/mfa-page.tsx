@@ -11,6 +11,8 @@ const messages: Record<string, [string, string]> = {
   RATE_LIMITED: ['محاولات كثيرة. انتظر ١٥ دقيقة ثم حاول مرة أخرى.', 'Too many tries. Wait 15 minutes and try again.'],
   MFA_NOT_CONFIGURED: ['التحقق بخطوتين غير مُفعّل على الخادم. تواصل مع مالك الموقع.', 'Two-step sign-in is not set up on the server. Contact the site owner.'],
   BAD_ORIGIN: ['تعذر التحقق من مصدر الطلب. أعد تحميل الصفحة.', 'Could not check where the request came from. Reload the page.'],
+  MFA_NOT_ENROLLED: ['لم يتم إعداد التحقق بخطوتين لحسابك بعد. أعد تحميل الصفحة وابدأ الإعداد.', 'Two-step sign-in is not set up for your account yet. Reload the page and start setup.'],
+  MFA_SECRET_UNREADABLE: ['تعذر قراءة مفتاح التحقق المحفوظ لحسابك. تواصل مع مالك الموقع.', 'The saved key for your account cannot be read. Contact the site owner.'],
   SIGN_IN_REQUIRED: ['انتهت الجلسة. سجّل الدخول من جديد.', 'Your session ended. Sign in again.'],
 };
 const generic: [string, string] = ['تعذر إكمال الطلب. حاول مرة أخرى.', 'Could not finish the request. Try again.'];
@@ -40,6 +42,7 @@ export function MfaPage() {
         if (r.ok && d.secret && d.otpauth) { setSecret(d.secret); setUri(d.otpauth); return setStep('enroll'); }
         if (d.error === 'MFA_ALREADY_ENROLLED') return setStep('verify');
         if (d.error === 'MFA_NOT_CONFIGURED') return setStep('unconfigured');
+        if (d.error === 'MFA_SECRET_UNREADABLE') { setError(d.error); return setStep('failed'); }
         setStep('failed');
       } catch { setStep('failed'); }
     })();
@@ -69,7 +72,7 @@ export function MfaPage() {
   if (step === 'signin') return <main className="page-main">{title}<p><Link href="/login?return_to=%2Fmfa">سجّل الدخول · Sign in</Link></p></main>;
   if (step === 'notneeded') return <main className="page-main">{title}<p><Bi ar="حسابك لا يحتاج هذه الخطوة." en="Your account does not need this step." /></p><Link href="/">الرئيسية · Home</Link></main>;
   if (step === 'unconfigured' || step === 'failed') {
-    const m = step === 'unconfigured' ? messages.MFA_NOT_CONFIGURED : generic;
+    const m = step === 'unconfigured' ? messages.MFA_NOT_CONFIGURED : messages[error] || generic;
     return <main className="page-main">{title}<p role="alert" className="error-note"><Bi ar={m[0]} en={m[1]} /></p></main>;
   }
 
@@ -88,14 +91,14 @@ export function MfaPage() {
     {step === 'enroll' && <>
       <p><Bi ar="١. افتح تطبيق المصادقة وامسح الرمز، أو اكتب المفتاح يدويًا." en="1. Open your authenticator app and scan the code, or type the key by hand." /></p>
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
-        <QRCodeSVG value={uri} size={176} marginSize={2} role="img" aria-label="QR" />
+        <QRCodeSVG value={uri} size={176} marginSize={2} role="img" aria-label="رمز QR لتطبيق المصادقة · QR code for the authenticator app" />
         <div><span>المفتاح · Key</span><br /><code dir="ltr" style={{ fontSize: 18, letterSpacing: 2, userSelect: 'all', overflowWrap: 'anywhere' }}>{secret}</code></div>
       </div>
       <p><Bi ar="٢. اكتب الرمز المكوّن من ٦ أرقام." en="2. Type the 6-digit code." /></p>
     </>}
     <form onSubmit={submit}>
       <label>{recover ? <Bi ar="رمز الاسترداد" en="Recovery code" /> : <Bi ar="الرمز المكوّن من ٦ أرقام" en="6-digit code" />}
-        <input ref={input} required dir="ltr" value={code} autoComplete="one-time-code" aria-invalid={!!error} aria-describedby={error ? 'mfa-err' : undefined}
+        <input ref={input} required dir="ltr" value={code} {...(recover ? {} : { autoComplete: 'one-time-code' })} aria-invalid={!!error} aria-describedby={error ? 'mfa-err' : undefined}
           {...(recover ? { maxLength: 24 } : { inputMode: 'numeric' as const, pattern: '[0-9]{6}', maxLength: 12 })}
           onChange={e => setCode(recover ? e.target.value : e.target.value.replace(/\D/g, '').slice(0, 6))} /></label>
       <div id="mfa-err">{status}</div>

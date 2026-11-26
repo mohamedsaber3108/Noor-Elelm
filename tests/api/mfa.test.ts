@@ -10,6 +10,9 @@ import { GET as sessionGet, POST as authPost } from "@/app/api/auth/[action]/rou
 import { POST as enroll } from "@/app/api/auth/mfa/enroll/route";
 import { POST as verify } from "@/app/api/auth/mfa/verify/route";
 import { POST as recover } from "@/app/api/auth/mfa/recover/route";
+import { DELETE as accDel, GET as accGet, PATCH as accPatch, POST as accPost } from "@/app/api/account/route";
+import { GET as archiveGet } from "@/app/api/archive/route";
+import records from "@/data/archive-records.json";
 import { setCookie } from "../mocks/next-headers";
 import { SESSION_COOKIE, createSession } from "@/app/auth";
 import { decryptSecret, encryptSecret, hashRecovery, matchesRecovery } from "@/lib/mfa";
@@ -307,5 +310,92 @@ describe("admin reset of another user's MFA", () => {
     const b = await seedUser("admin");
     await freshSession(b.id);
     expect((await put(a.id)).status).toBe(403);
+  });
+});
+
+// Every route handler under app/api, found by the bundler, so a new route is covered without editing this list.
+const routeModules = import.meta.glob<Record<string, unknown>>("/app/api/**/route.ts", { eager: true });
+const routeSources = import.meta.glob<string>("/app/api/**/route.ts", { eager: true, query: "?raw", import: "default" });
+const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+// Routes that are open on purpose or that take part in the MFA step itself.
+// The archive is a public index by design; the draft text inside it is what MFA protects (tested on its own below).
+const skipRoute = (f: string) => f.endsWith("/health/route.ts") || f.endsWith("/archive/route.ts") || f.includes("/auth/");
+
+describe("every staff-gated route refuses an unverified staff session", () => {
+  it("finds the routes (guards the glob itself)", () => {
+    const files = Object.keys(routeModules).filter((f) => !skipRoute(f));
+    expect(files.length).toBeGreaterThanOrEqual(10);
+    expect(files.some((f) => f.endsWith("/account/route.ts"))).toBe(true);
+  });
+  for (const role of ["admin", "reviewer"] as const) {
+    it(`${role}: no handler answers 2xx or 4xx-other than 401/403 before MFA`, async () => {
+      await signInUnverified(role);
+      let tried = 0;
+      for (const [file, mod] of Object.entries(routeModules)) {
+        if (skipRoute(file)) continue;
+        for (const m of METHODS) {
+          const h = mod[m] as ((r: never) => Promise<Response>) | undefined;
+          if (!h) continue;
+          const body = m === "GET" ? undefined : {};
+          const r = await h(call(m, "/api/x?id=x", body) as never);
+          expect([401, 403], `${m} ${file}`).toContain(r.status);
+          tried++;
+        }
+      }
+      expect(tried).toBeGreaterThanOrEqual(18);
+    });
+  }
+  it("archive draft text stays hidden from unverified staff and shows after MFA", async () => {
+    const id = (records as { id: string }[])[0].id;
+    const u = await signInUnverified("reviewer");
+    const get = async () => (await archiveGet(call("GET", `/api/archive?id=${encodeURIComponent(id)}`) as never)).json();
+    expect(await get()).toMatchObject({ text: null, restricted: true });
+    await verifySessions(u.id);
+    expect((await get()).restricted).toBe(false);
+  });
+  it("only three files may pass allowUnverified", () => {
+    const allowed = ["/app/api/auth/[action]/route.ts"];
+    const bad = Object.entries(routeSources).filter(([f, src]) => /allowUnverified/.test(src) && !allowed.includes(f)).map(([f]) => f);
+    expect(bad).toEqual([]);
+  });
+  it("a learner promoted to reviewer by a role change is gated at once", async () => {
+    const u = await signIn("learner");
+    expect((await meGet()).status).toBe(200);
+    await db().prepare("UPDATE users SET role='reviewer' WHERE id=?").bind(u.id).run();
+    expect((await meGet()).status).toBe(401);
+    expect((await corrGet()).status).toBe(403);
+    await verifySessions(u.id);
+    expect((await meGet()).status).toBe(200);
+  });
+});
+
+describe("password change and account delete", () => {
+  const NEXT = "another-long-password-1";
+  it("keeps verified state for the same session only", async () => {
+    const u = await signIn("admin");
+    const other = await createSession(u.id, "other", { mfaVerified: true });
+    const r = await accPost(call("POST", "/api/account", { current: PASSWORD, next: NEXT }) as never);
+    expect(r.status).toBe(200);
+    expect(other).toBeTruthy();
+    expect(await count("SELECT COUNT(*) AS n FROM sessions WHERE user_id=?", u.id)).toBe(1);
+    expect(await count("SELECT COUNT(*) AS n FROM sessions WHERE user_id=? AND mfa_verified_at IS NOT NULL", u.id)).toBe(1);
+  });
+  it("an unverified staff session stays unverified after a password change attempt", async () => {
+    await signInUnverified("reviewer");
+    expect((await accPost(call("POST", "/api/account", { current: PASSWORD, next: NEXT }) as never)).status).toBe(401);
+    expect((await accGet()).status).toBe(401);
+    expect((await accPatch(call("PATCH", "/api/account", { name: "Name" }) as never)).status).toBe(401);
+    expect((await accDel(call("DELETE", "/api/account", { password: PASSWORD }) as never)).status).toBe(401);
+  });
+  it("deleting an account removes its MFA secret and recovery codes", async () => {
+    useKey();
+    const u = await signInUnverified("reviewer");
+    await enrolNow();
+    expect(await count("SELECT COUNT(*) AS n FROM user_mfa WHERE user_id=?", u.id)).toBe(1);
+    expect(await count("SELECT COUNT(*) AS n FROM mfa_recovery_codes WHERE user_id=?", u.id)).toBe(10);
+    const r = await accDel(call("DELETE", "/api/account", { password: PASSWORD }) as never);
+    expect(r.status).toBe(200);
+    expect(await count("SELECT COUNT(*) AS n FROM user_mfa WHERE user_id=?", u.id)).toBe(0);
+    expect(await count("SELECT COUNT(*) AS n FROM mfa_recovery_codes WHERE user_id=?", u.id)).toBe(0);
   });
 });
