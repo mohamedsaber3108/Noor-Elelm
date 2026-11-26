@@ -314,8 +314,10 @@ describe("admin reset of another user's MFA", () => {
 });
 
 // Every route handler under app/api, found by the bundler, so a new route is covered without editing this list.
-const routeModules = import.meta.glob<Record<string, unknown>>("/app/api/**/route.ts", { eager: true });
-const routeSources = import.meta.glob<string>("/app/api/**/route.ts", { eager: true, query: "?raw", import: "default" });
+// import.meta.glob is a Vite feature; the project has no vite/client types, so the `any` cast below is deliberate.
+type Glob = { glob: (pattern: string, o?: object) => unknown };
+const routeModules = (import.meta as unknown as Glob).glob("/app/api/**/route.ts", { eager: true }) as Record<string, Record<string, unknown>>;
+const routeSources = (import.meta as unknown as Glob).glob("/app/api/**/route.ts", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 // Routes that are open on purpose or that take part in the MFA step itself.
 // The archive is a public index by design; the draft text inside it is what MFA protects (tested on its own below).
