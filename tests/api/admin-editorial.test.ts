@@ -69,7 +69,10 @@ describe("/api/admin/import", () => {
   });
   it("refuses a cross-origin POST with 403 BAD_ORIGIN", async () => {
     await signIn("reviewer");
-    expect((await importPost(req("POST", "/api/admin/import", { offset: 0, limit: 1 }, EVIL) as never)).status).toBe(403);
+    const res = await importPost(req("POST", "/api/admin/import", { offset: 0, limit: 1 }, EVIL) as never);
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe("BAD_ORIGIN");
+    expect(await count("SELECT COUNT(*) AS n FROM content_items")).toBe(0);
   });
 });
 
@@ -123,7 +126,10 @@ describe("/api/admin/content", () => {
   });
   it("refuses a cross-origin PUT with 403 BAD_ORIGIN", async () => {
     const id = await seed();
-    expect((await contentPut(req("PUT", "/api/admin/content", { id, title: "x", body: "y", revision: 1 }, EVIL) as never)).status).toBe(403);
+    const res = await contentPut(req("PUT", "/api/admin/content", { id, title: "x", body: "y", revision: 1 }, EVIL) as never);
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe("BAD_ORIGIN");
+    expect(await count("SELECT COUNT(*) AS n FROM content_revisions")).toBe(0);
   });
 });
 
@@ -161,7 +167,10 @@ describe("/api/admin/review", () => {
   });
   it("refuses a cross-origin POST with 403 BAD_ORIGIN", async () => {
     await signIn("reviewer");
-    expect((await reviewPost(req("POST", "/api/admin/review", good, EVIL) as never)).status).toBe(403);
+    const res = await reviewPost(req("POST", "/api/admin/review", good, EVIL) as never);
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe("BAD_ORIGIN");
+    expect(await count("SELECT COUNT(*) AS n FROM reviews")).toBe(0);
   });
 });
 

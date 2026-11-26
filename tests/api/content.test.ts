@@ -87,7 +87,10 @@ describe("/api/user-content", () => {
   });
   it("refuses a cross-origin POST with 403 BAD_ORIGIN", async () => {
     await signIn("learner");
-    expect((await ucPost(call("POST", "/api/user-content", { id: ID, action: "bookmark" }, EVIL))).status).toBe(403);
+    const res = await ucPost(call("POST", "/api/user-content", { id: ID, action: "bookmark" }, EVIL));
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe("BAD_ORIGIN");
+    expect(await count("SELECT COUNT(*) AS n FROM bookmarks")).toBe(0);
   });
 });
 
@@ -135,6 +138,9 @@ describe("/api/corrections", () => {
   });
   it("refuses a cross-origin POST with 403 BAD_ORIGIN", async () => {
     await signIn("learner");
-    expect((await corrPost(call("POST", "/api/corrections", good, EVIL))).status).toBe(403);
+    const res = await corrPost(call("POST", "/api/corrections", good, EVIL));
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe("BAD_ORIGIN");
+    expect(await count("SELECT COUNT(*) AS n FROM audit_events WHERE action='CORRECTION_REPORT'")).toBe(0);
   });
 });
