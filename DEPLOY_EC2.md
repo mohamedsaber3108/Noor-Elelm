@@ -115,6 +115,18 @@ Names only, no values here: `MAIL_PROVIDER`, `MAIL_FROM`, `MAIL_LINK_BASE`.
 - A reset ends every session of that user and signs nobody in. Staff still pass MFA at the next sign-in.
 - Policy: an unverified account can use the site as before. Whether unverified accounts may earn coins is an open owner question (QUESTIONS Q29).
 
+## Audit log
+
+Migration `drizzle/0007_audit_chain.sql` is additive: new nullable columns on `audit_events` (`seq`, `prev_hash`, `hash`, `actor_role`, `result`, `source`, `reason`), two unique indexes, and two triggers. Take an EBS snapshot first. It is not applied by this change. The trigger SQL was added to the file by hand, because drizzle-kit snapshots cover tables and columns only.
+
+- **Append-only.** A trigger on UPDATE and one on DELETE stop every change to `audit_events` with the error `AUDIT_APPEND_ONLY`. Old rows stay valid and readable. Nothing is deleted. Retention is the owner's decision (QUESTIONS Q8).
+- **Hash chain.** Each new row stores `seq` (1, 2, 3, ...), the previous row's hash and its own SHA-256. The hash covers seq, previous hash, actor, role, action, target, detail, result, source, reason and time.
+- **Same transaction.** The audit row is written in the same batch as the action. If the audit write fails (also after one retry when two writers collide), the action is not applied and the route answers `503 AUDIT_UNAVAILABLE`.
+- **Verifier.** An admin with a verified MFA session can open `GET /api/admin/audit/verify`. It returns `{ ok, brokenAt, checked, skipped }`. `skipped` counts old rows without `seq`. It changes nothing. There is no page yet.
+- **What the verifier proves.** Rows written after 0007 were not edited, removed from the middle or reordered, unless the person also recomputed every later hash.
+- **What it does not prove.** Someone with the database file can remove the triggers and rewrite the whole chain from any point, and the verifier will pass. Only a copy kept off the server detects that. **The daily off-box copy is NOT built**: it waits for the owner's storage answer (QUESTIONS Q6 and Q8). Rows removed from the very end, and rows added without `seq`, are not detected either. Old rows (before 0007) are not covered at all.
+- Failed and denied attempts (for example a 403 on an admin route) are not logged yet. The viewer page is also not built (N-14b).
+
 ## Limits of this setup
 
 - One server means one point of failure. Use EBS snapshots plus the SQLite backups. To scale out, deploy the same build to Cloudflare Workers + D1 (`DEPLOY_CLOUDFLARE.md`).
