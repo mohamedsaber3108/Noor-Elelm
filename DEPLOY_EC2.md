@@ -100,6 +100,16 @@ Reviewers, admins and ids in `REVIEWER_IDS` must pass a 6-digit authenticator co
 5. `sudo chown -R noor:noor /var/lib/noor-al-ilm` and `sudo systemctl start noor-al-ilm`.
 6. The admin signs in and enrols again at `/mfa`. Then write the event in your own log (the app does not record this step).
 
+## Staff sessions
+
+A staff session (reviewer, admin, or an id in `REVIEWER_IDS`) that has passed MFA ends after **30 minutes without use** (idle) or **8 hours after the MFA step** (absolute), whichever comes first. The person must sign in again and pass MFA again. Learner sessions keep their 30-day life.
+
+- **Settings (names only, both optional):** `STAFF_IDLE_MINUTES` (default 30) and `STAFF_ABSOLUTE_HOURS` (default 8). A value that is not a number above zero is ignored and the default is used. Set them with the same method as the other settings; never in chat.
+- **What users see:** about two minutes before the idle end, a small notice appears in the header (Arabic and English) with a button "Stay signed in". The button counts as use. The notice checks the clock every 30 seconds, not every second. It cannot extend the 8-hour limit. After the end, the next page or call sends the person to sign in.
+- **Use is counted at most once a minute** (`sessions.last_seen_at`), so there is at most one extra database write per minute per staff session. An expired row is deleted by the call that finds it.
+- **New session id after MFA.** A successful MFA code or recovery code replaces the session with a new one and deletes the old one. Any session id captured before MFA stops working.
+- **Release step:** migration `drizzle/0008_session_limits.sql` adds the nullable column `sessions.last_seen_at`. It is additive. Take an EBS snapshot first, apply it through your normal release step, then restart. A staff session with no `last_seen_at` counts from its MFA time, so staff who passed MFA more than 30 minutes before the release sign in again once.
+
 ## Mail (password reset and email verification)
 
 Names only, no values here: `MAIL_PROVIDER`, `MAIL_FROM`, `MAIL_LINK_BASE`.
