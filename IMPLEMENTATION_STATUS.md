@@ -1,6 +1,6 @@
 # NOOR AL-ILM — implementation register (2026-10-23)
 
-This register separates shipped behavior from unverified content and external prerequisites. The current deployment is owner-private. No claim from the 45-file source archive is publicly approved.
+This register separates shipped behavior from unverified content and external prerequisites. The current deployment runs on one AWS EC2 host over HTTP (no domain or HTTPS yet; see `PRODUCTION_READINESS.md`). No claim from the 45-file source archive is publicly approved.
 
 | Requirement | State | Evidence / limit |
 |---|---|---|
@@ -16,8 +16,9 @@ This register separates shipped behavior from unverified content and external pr
 | CMS and audit | Partial functional | Reviewer-gated import of 3,337 drafts into D1 in idempotent batches, text edits, version restore, review decisions, audit events. Publication remains disabled; no dual scholarly release or translator/designer role workflow. |
 | Ten languages | Architecture only | Locale selector persists and translation table exists. Non-Arabic content remains unavailable until human translation and scholarly review; no machine translation of scripture. |
 | Rewards, coupons and partners | Schema and disabled UI | Partner/reward/redemption entities exist. No partner consent, coupon issuance, redemptions or external value enabled. |
-| Free, premium, institutional plans | Proposal UI | Basic content intended free; 90-day trial and EGP 79/699 are only proposals. Billing is not active. |
-| PostgreSQL/AWS, Docker, backups | Not implemented | Current runtime is Sites Workers with D1. `DEPLOY_AWS.md` is a migration plan, not a deployed production stack or tested restore. |
+| Free, premium, institutional plans | Not available | No paid plans or prices are shown; billing is not active. |
+| PostgreSQL/AWS, Docker, backups | Partial | Runtime on EC2 is one process (local Workers runtime, SQLite file) behind nginx and systemd (`DEPLOY_EC2.md`, `deploy/ec2/`); the Cloudflare Workers + D1 path is documented in `DEPLOY_CLOUDFLARE.md`. `deploy/ec2/backup.sh` makes a daily same-host copy (14 days). `DEPLOY_AWS.md` (PostgreSQL) is a migration plan, not built. No off-host backup and no tested restore. |
+| Accounts and database | Implemented | First-party email and password accounts (`app/auth.ts`); roles learner, reviewer, admin. 5 migrations, `drizzle/0000` to `0004`. |
 | Accessibility, mobile, performance, security | Partially checked | TypeScript/build and desktop browser navigation/light/dark pass. Mobile device, assistive technology, load, penetration and hosted authenticated E2E tests remain. |
 
 ## Publication gate

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { sameOrigin } from "@/app/auth";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 import { currentSessionId } from "@/app/auth";
@@ -11,6 +12,7 @@ const schema = z.object({ code: z.string().transform(v => normalizeDigits(v.trim
 
 /** POST {code}: confirms enrolment (first success, returns the recovery codes once) or verifies a staff session. */
 export async function POST(req: NextRequest) {
+  if (!sameOrigin(req)) return err("BAD_ORIGIN", 403);
   const g = await mfaGuard(req);
   if ("res" in g) return g.res;
   const db = env.DB!, uid = g.user.userId;
