@@ -24,6 +24,7 @@ describe("normalizeArabic", () => {
     expect(normalizeArabic("موسى")).toBe(normalizeArabic("موسي"));
     expect(normalizeArabic("مؤمن")).toBe(normalizeArabic("مومن"));
     expect(normalizeArabic("مسائل")).toBe(normalizeArabic("مسايل"));
+    expect(normalizeArabic("\u06A9تاب \u06CCوم")).toBe(normalizeArabic("كتاب يوم"));
   });
   it("maps Arabic-Indic digits, drops bidi marks, folds space and Latin case", () => {
     expect(normalizeArabic("سورة ١١٤")).toBe(normalizeArabic("سوره 114"));

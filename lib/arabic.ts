@@ -6,7 +6,7 @@ import { normalizeDigits } from "@/lib/digits";
  * - removes tashkeel (U+064B-U+065F), superscript alef (U+0670), Quranic annotation marks (U+06D6-U+06ED) and tatweel (U+0640)
  * - alef forms (U+0623, U+0625, U+0622, U+0671) to bare alef (U+0627)
  * - taa marbuta (U+0629) to haa (U+0647); alef maqsura (U+0649) to yaa (U+064A)
- * - hamza on waw (U+0624) to waw; hamza on yaa (U+0626) to yaa
+ * - hamza on waw (U+0624) to waw; hamza on yaa (U+0626) to yaa; Persian yeh (U+06CC) to yaa, keheh (U+06A9) to kaf
  * - Arabic-Indic and Persian digits to 0-9 (lib/digits.ts)
  * - removes bidi and joiner marks (U+061C, U+200C-U+200F, U+202A-U+202E, U+2066-U+2069)
  * - lower-cases Latin letters and folds runs of white space to one space
@@ -20,6 +20,8 @@ export function normalizeArabic(s: string): string {
     .replace(/\u0649/g, "\u064A")
     .replace(/\u0624/g, "\u0648")
     .replace(/\u0626/g, "\u064A")
+    .replace(/\u06CC/g, "\u064A")
+    .replace(/\u06A9/g, "\u0643")
     .toLocaleLowerCase()
     .replace(/\s+/g, " ")
     .trim();

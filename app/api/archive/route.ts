@@ -8,6 +8,8 @@ const sequence=new Map(all.map((r,i)=>[r.id,i+1]));
 const safe=(r:typeof all[number])=>({id:r.id,sequence:sequence.get(r.id),world:r.world,title:r.title,source:r.source,location:r.location,type:r.type,status:r.status});
 // Search text, normalised once (N-23a): diacritics, alef forms, taa marbuta, alef maqsura and digits match either way.
 const hay=new Map(all.map(r=>[r.id,normalizeArabic(r.title+' '+r.source)]));
+// Title plus full text for ranking, normalised once on first use and then kept.
+let rankHay:Map<string,string>|null=null;
 export async function GET(req:NextRequest){
  const p=req.nextUrl.searchParams,id=p.get('id');
  if(id){
@@ -23,7 +25,7 @@ export async function GET(req:NextRequest){
  const page=Math.min(1000,Math.max(1,Number(p.get('page')||1)||1)),pageSize=24;
  const filtered=all.filter(r=>(!world||r.world===world)&&(!type||(type==='visualizable_candidate'?r.type==='claim_candidate':type==='infographic_candidate'?r.type==='claim_candidate'&&/^\s*(?:ال)?إنفو(?:غرافيك|غراف)/.test(r.title)&&r.title.length>22:r.type===type))&&(!q||hay.get(r.id)!.includes(q)));
  const terms=(p.get('rank')||'').slice(0,110).split('|').map(normalizeArabic).filter(Boolean).slice(0,4);
- if(terms.length){const rankText=new Map(filtered.map(r=>[r.id,normalizeArabic(r.title+' '+r.text)]));const score=(r:typeof all[number])=>terms.filter(t=>rankText.get(r.id)!.includes(t)).length;filtered.sort((a,b)=>score(b)-score(a));}
+ if(terms.length){rankHay??=new Map(all.map(r=>[r.id,normalizeArabic(r.title+' '+r.text)]));const rankText=rankHay;const score=(r:typeof all[number])=>terms.filter(t=>rankText.get(r.id)!.includes(t)).length;filtered.sort((a,b)=>score(b)-score(a));}
  const results=filtered.slice((page-1)*pageSize,page*pageSize).map(safe);
  return NextResponse.json({results,total:filtered.length,page,pageSize,pages:Math.ceil(filtered.length/pageSize),status:'DRAFT_INDEX'}, {headers:{'Cache-Control':'private, max-age=30'}});
 }
