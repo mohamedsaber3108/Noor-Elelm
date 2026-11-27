@@ -30,6 +30,8 @@ export async function signIn(role: Role) {
 export function call(method: string, path: string, body?: unknown, opts: { origin?: string; headers?: Record<string, string> } = {}) {
   const headers: Record<string, string> = { ...(opts.headers ?? {}) };
   if (opts.origin) headers.origin = opts.origin;
+  // A request that carries a cookie is a browser request: it must send same-origin hints (see origin-rule.test.ts).
+  else if (headers.cookie && !headers["sec-fetch-site"]) headers["sec-fetch-site"] = "same-origin";
   if (body !== undefined) headers["content-type"] = "application/json";
   return new NextRequest(`http://localhost:3000${path}`, {
     method,
