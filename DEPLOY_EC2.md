@@ -95,6 +95,31 @@ Example line: `--var REGISTRATION_MODE:allowlist --var REGISTRATION_ALLOWLIST:<c
 
 **Restore a backup:** `sudo systemctl stop noor-al-ilm`. Then `gunzip -c <backup>-d1-*.sqlite.gz | sudo tee /var/lib/noor-al-ilm/state/v3/d1/miniflare-D1DatabaseObject/<same-hash>.sqlite >/dev/null`, delete the `-wal`/`-shm` files next to it, and run `sudo chown -R noor:noor /var/lib/noor-al-ilm` and `sudo systemctl start noor-al-ilm`. Also copy backups off the server, for example with an S3 sync or EBS snapshots.
 
+## Staff two-step sign-in (MFA)
+
+Reviewers, admins and ids in `REVIEWER_IDS` must pass a 6-digit authenticator code (or a recovery code) after the password. Learners are not affected.
+
+**Key delivery is NOT decided (QUESTIONS Q27).** How `MFA_SECRET_KEY` reaches the Worker on EC2 is open. Do **not** pass it with `--var`: command-line values are visible in process lists. Merge and deploy of this release wait for the owner's answer. The runbook (outside the repository: `plan/RUNBOOK-OD-04a.md`) lists the options to prove on staging first.
+
+**Setup (owner, once, after Q27 is answered).** Create `MFA_SECRET_KEY` (at least 32 random characters, for example from `openssl rand -base64 48`; a passphrase typed by hand is not acceptable) and deliver it by the method chosen for Q27. Never put the value in chat, in a file in the repository, or in a ticket. Without it, MFA enrolment and verification fail closed with `MFA_NOT_CONFIGURED`, so staff cannot sign in to staff pages. Keep a copy of the key in your password manager. If it is lost or changed, every stored MFA secret is unreadable (`MFA_SECRET_UNREADABLE`) and each staff user is reset by the server-owner sqlite step (step 3 below), because admins cannot pass MFA. Take an EBS snapshot, then apply migration `drizzle/0005_staff_mfa.sql` through your normal release step, then restart the service. Enrol your own admin account first.
+
+**Required setting for this release: `TRUST_PROXY_HEADER=x-real-ip`.** Without it every user shares one rate-limit bucket (`unknown`), so a few staff mistakes can block all staff. Check that it is set before the release goes live.
+
+**After the deploy.** Enrol every admin and reviewer account in one sitting, admin first. Keep sign-up closed until done. Change the password of any staff account that was ever shared. Then check `audit_events` for `MFA_ENROLLED` and confirm each row is yours. After an admin reset, ask the person to enrol at once and change their password. Until a person enrols, whoever knows their password could enrol their own device first. Note: someone with a staff password can also use up the 5 tries per 15 minutes and keep that user out; a different admin can reset it.
+
+**Lost device, step 1: recovery code.** The user signs in, opens `/mfa`, chooses "I lost my device" and types one of the 10 recovery codes they saved. Each code works once.
+
+**Lost device, step 2: reset by another admin.** An admin who has passed MFA opens `/admin/users` (or calls `PUT /api/admin/users` with `{"id":"<user id>","resetMfa":true}`). This clears that user's MFA, recovery codes and sessions. The user enrols again at the next sign-in. An admin cannot reset their own MFA. The action is written to the audit log as `MFA_RESET`.
+
+**Lost device, step 3: the last admin (server owner only).** Use this only when no admin can pass MFA and no recovery code is left. It is not run by the app and not part of a release.
+
+1. Take an EBS snapshot and run `sudo noor-backup manual`.
+2. `sudo systemctl stop noor-al-ilm`.
+3. Open the D1 sqlite file under `/var/lib/noor-al-ilm/state/v3/d1/miniflare-D1DatabaseObject/` with `sudo sqlite3 <file>.sqlite`.
+4. Run, with the admin's real id (find it with `SELECT id,email FROM users WHERE role='admin';`): `DELETE FROM user_mfa WHERE user_id='<id>'; DELETE FROM mfa_recovery_codes WHERE user_id='<id>'; DELETE FROM sessions WHERE user_id='<id>';`
+5. `sudo chown -R noor:noor /var/lib/noor-al-ilm` and `sudo systemctl start noor-al-ilm`.
+6. The admin signs in and enrols again at `/mfa`. Then write the event in your own log (the app does not record this step).
+
 ## Limits of this setup
 
 - One server means one point of failure. Use EBS snapshots plus the SQLite backups. To scale out, deploy the same build to Cloudflare Workers + D1 (`DEPLOY_CLOUDFLARE.md`).

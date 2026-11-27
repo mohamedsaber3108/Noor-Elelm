@@ -4,7 +4,7 @@ import { GET as archive } from "@/app/api/archive/route";
 import { GET as ucGet, POST as ucPost } from "@/app/api/user-content/route";
 import { GET as corrGet, POST as corrPost } from "@/app/api/corrections/route";
 import summaries from "@/data/archive-summaries.json";
-import { setEnv, call, count, signIn, EVIL } from "../helpers";
+import { setEnv, call, count, signIn, verifySessions, EVIL } from "../helpers";
 
 const ID = (summaries as { id: string }[])[0].id;
 
@@ -46,6 +46,7 @@ describe("GET /api/archive", () => {
   it("lets a user listed in REVIEWER_IDS read the text (known gap: env path, see N-15)", async () => {
     const u = await signIn("learner");
     setEnv("REVIEWER_IDS", `x, ${u.id}`);
+    await verifySessions(u.id);
     expect((await (await archive(call("GET", `/api/archive?id=${ID}`))).json()).restricted).toBe(false);
   });
 });

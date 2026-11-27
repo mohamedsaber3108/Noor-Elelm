@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     env.DB.prepare("INSERT INTO audit_events(id,actor_id,action,target_id) VALUES(?,?,?,?)").bind(crypto.randomUUID(), u.userId, "PASSWORD_CHANGED", u.userId),
   ]);
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(SESSION_COOKIE, await createSession(u.userId, req.headers.get("user-agent")), sessionCookieOptions(isSecure(req)));
+  res.cookies.set(SESSION_COOKIE, await createSession(u.userId, req.headers.get("user-agent"), { mfaVerified: u.mfaVerified }), sessionCookieOptions(isSecure(req)));
   return res;
 }
 
@@ -70,6 +70,8 @@ export async function DELETE(req: NextRequest) {
   const id = u.userId;
   await env.DB.batch([
     env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(id),
+    env.DB.prepare("DELETE FROM user_mfa WHERE user_id=?").bind(id),
+    env.DB.prepare("DELETE FROM mfa_recovery_codes WHERE user_id=?").bind(id),
     env.DB.prepare("DELETE FROM bookmarks WHERE user_id=?").bind(id),
     env.DB.prepare("DELETE FROM progress WHERE user_id=?").bind(id),
     env.DB.prepare("DELETE FROM quiz_served WHERE user_id=?").bind(id),

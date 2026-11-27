@@ -33,8 +33,14 @@ export const users = sqliteTable("users", {
 }, t => [uniqueIndex("users_email_unique").on(t.email)]);
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(), userId: text("user_id").notNull(), expiresAt: integer("expires_at").notNull(),
-  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`), userAgent: text("user_agent")
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`), userAgent: text("user_agent"), mfaVerifiedAt: integer("mfa_verified_at")
 }, t => [index("sessions_user_idx").on(t.userId), index("sessions_expiry_idx").on(t.expiresAt)]);
+export const userMfa = sqliteTable("user_mfa", {
+  userId: text("user_id").primaryKey(), secretEnc: text("secret_enc").notNull(), enabledAt: integer("enabled_at"), lastStep: integer("last_step")
+});
+export const mfaRecoveryCodes = sqliteTable("mfa_recovery_codes", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull(), codeHash: text("code_hash").notNull(), usedAt: integer("used_at")
+}, t => [index("mfa_recovery_user_idx").on(t.userId)]);
 export const rateLimits = sqliteTable("rate_limits", {
   key: text("key").primaryKey(), count: integer("count").notNull().default(0), resetAt: integer("reset_at").notNull()
 });

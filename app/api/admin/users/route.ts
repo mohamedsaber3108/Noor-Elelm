@@ -55,9 +55,12 @@ export async function GET(req: NextRequest) {
   }, { headers: { "Cache-Control": "no-store" } });
 }
 
-const putSchema = z.object({ id: z.string().min(1).max(64), role: z.enum(ROLES) });
+const putSchema = z.union([
+  z.object({ id: z.string().min(1).max(64), role: z.enum(ROLES) }),
+  z.object({ id: z.string().min(1).max(64), resetMfa: z.literal(true) }),
+]);
 
-/** PUT {id, role} changes a user's role. */
+/** PUT {id, role} changes a user's role. PUT {id, resetMfa:true} clears another user's MFA (lost device); the admin needs their own verified MFA session. */
 export async function PUT(req: NextRequest) {
   const admin = await adminOnly();
   if (!admin) return err("ADMIN_ACCESS_REQUIRED", 403);
@@ -66,7 +69,21 @@ export async function PUT(req: NextRequest) {
   if (!db) return err("DATABASE_UNAVAILABLE", 503);
   const parsed = putSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return err("INVALID_INPUT", 400);
-  const { id, role } = parsed.data;
+  const { id } = parsed.data;
+  if ("resetMfa" in parsed.data) {
+    if (id === admin.userId) return err("SELF_RESET_REFUSED", 403);
+    const who = await db.prepare("SELECT id FROM users WHERE id=?").bind(id).first();
+    if (!who) return err("NOT_FOUND", 404);
+    // The target must enrol again at next sign-in: MFA rows, recovery codes and all their sessions go.
+    await db.batch([
+      db.prepare("DELETE FROM user_mfa WHERE user_id=?").bind(id),
+      db.prepare("DELETE FROM mfa_recovery_codes WHERE user_id=?").bind(id),
+      db.prepare("DELETE FROM sessions WHERE user_id=?").bind(id),
+      db.prepare("INSERT INTO audit_events(id,actor_id,action,target_id,detail_json) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(), admin.userId, "MFA_RESET", id, "{}"),
+    ]);
+    return NextResponse.json({ ok: true });
+  }
+  const { role } = parsed.data;
   const target = await db.prepare("SELECT role FROM users WHERE id=?").bind(id).first<{ role: string }>();
   if (!target) return err("NOT_FOUND", 404);
   if (target.role === "admin" && role !== "admin") {

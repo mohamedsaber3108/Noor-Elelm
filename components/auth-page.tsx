@@ -31,7 +31,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     try {
       const r = await fetch('/api/auth/' + mode, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(register ? { name, email, password } : { email, password }) });
       if (!r.ok) { const d = await r.json().catch(() => ({})) as { error?: string }; if (d.error === 'REGISTRATION_CLOSED') { refused.current = true; setRegOpen(false); return; } setError(messages[d.error || ''] || 'تعذر إكمال الطلب. حاول مرة أخرى.'); return; }
-      window.location.assign(returnTarget());
+      const d = await r.json().catch(() => ({})) as { mfa?: string };
+      // Staff finish MFA first; nothing else works for them until then.
+      window.location.assign(d.mfa === 'required' ? '/mfa?return_to=' + encodeURIComponent(returnTarget()) : returnTarget());
     } catch { setError('تعذر الاتصال بالخادم. تحقق من الشبكة وحاول مرة أخرى.'); } finally { setBusy(false); }
   }
   const [search, setSearch] = useState('');
