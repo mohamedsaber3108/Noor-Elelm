@@ -3,6 +3,21 @@ import { runWithConnectorBinding } from "../lib/connector-context";
 import type { ConnectorBinding } from "../lib/connector-contract.mjs";
 
 const MAX_BODY_BYTES = 1024 * 1024;
+// shortcut: script-src has 'unsafe-inline' because the server renderer writes inline bootstrap and RSC data
+// scripts on every page without a per-request nonce; move to nonces when vinext can pass one.
+// Fonts and styles still allow Google until the self-hosting question (Q22) is answered.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data:",
+  "connect-src 'self'",
+  "frame-ancestors 'self'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+].join("; ");
 const worker = {
   fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext<{ CONNECTORS?: ConnectorBinding }>) {
     let binding = ctx.props?.CONNECTORS;
@@ -43,6 +58,9 @@ const worker = {
       out.headers.set("X-Frame-Options", "SAMEORIGIN");
       out.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
       out.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+      // Report-only unless CSP_MODE=enforce. No report endpoint exists: violations show in the browser console only.
+      const enforce = String((env as unknown as Record<string, unknown>).CSP_MODE || "").toLowerCase() === "enforce";
+      out.headers.set(enforce ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only", CSP);
       return out;
     });
   },

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import {getCurrentUser,isReviewer} from '@/app/auth';
+import {getCurrentUser,isReviewer,sameOrigin} from '@/app/auth';
 import { env } from "cloudflare:workers";
 import { trialQuestions } from "@/lib/quiz-bank";
 export async function POST(request:NextRequest){
+ if(!sameOrigin(request))return NextResponse.json({error:'BAD_ORIGIN'},{status:403});
  const db=env.DB;if(!db)return NextResponse.json({error:"DATABASE_UNAVAILABLE"},{status:503});
  const u=await getCurrentUser();if(!u)return NextResponse.json({error:"SIGN_IN_REQUIRED"},{status:401});
  let body:{questionId?:string;answerKey?:string;token?:string};try{body=await request.json()}catch{return NextResponse.json({error:"INVALID_JSON"},{status:400})}

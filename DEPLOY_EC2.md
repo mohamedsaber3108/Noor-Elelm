@@ -51,6 +51,37 @@ Roll back manually: `sudo noor-deploy --rollback`.
 
 Session cookies switch to `Secure` automatically once requests arrive over HTTPS.
 
+nginx must pass `X-Forwarded-Proto` (and `Host`). The write-route Origin check compares the scheme too, so a missing `X-Forwarded-Proto` behind HTTPS makes browser writes fail with `403 BAD_ORIGIN`.
+
+## Content Security Policy (`CSP_MODE`)
+
+The app sends a `Content-Security-Policy-Report-Only` header by default. Setting `CSP_MODE` to `enforce` sends `Content-Security-Policy` instead. Any other value stays report-only. There is no report endpoint: violations show only in the browser console.
+
+To set `CSP_MODE` on this host (it is not a secret): add `--var CSP_MODE:enforce` to the `ExecStart` line of the service unit (next to `--var TRUST_PROXY_HEADER:x-real-ip`), run `sudo systemctl daemon-reload`, then `sudo systemctl restart` the service. To roll back, remove the flag and repeat.
+
+Scripts, curl calls and monitors that send the session cookie but no `Origin` and no `Sec-Fetch-Site` header now get `403` on writes (POST, PUT, PATCH, DELETE). Send an `Origin` header that matches the site, for example `Origin: https://your-site`. Browsers already send it.
+
+Rollout:
+
+1. Deploy with `CSP_MODE` unset (report-only) to staging.
+2. Open the main pages in Arabic and English with the browser console open. Note every "Content Security Policy" message.
+3. Fix or allow each one in `worker/index.ts`. Repeat step 2 until the console is clean.
+4. Set `CSP_MODE=enforce` on staging and check again.
+5. Set `CSP_MODE=enforce` on production. To roll back, unset `CSP_MODE`.
+
+Fonts and styles still load from Google until the font question (Q22) is answered. `script-src` allows `'unsafe-inline'` because the renderer writes inline bootstrap scripts without a nonce.
+
+## Sign-up switch
+
+Sign-up is **closed unless you open it**. Two settings, added as extra `--var` lines on the `ExecStart` of the systemd unit, next to `--var TRUST_PROXY_HEADER:x-real-ip`:
+
+- `REGISTRATION_MODE`: `closed` (default when unset or unknown), `allowlist` or `open`.
+- `REGISTRATION_ALLOWLIST`: comma-separated emails; used only in `allowlist` mode.
+
+Example line: `--var REGISTRATION_MODE:allowlist --var REGISTRATION_ALLOWLIST:<comma list>`. Then `sudo systemctl daemon-reload` and `sudo systemctl restart noor-al-ilm`. Login is never affected.
+
+**Warning about `allowlist`:** it lets a stranger test whether an address is listed (a refused request answers differently from an accepted one), and it does not verify email, so whoever registers a listed address first owns that account. Keep `closed` until email verification exists.
+
 ## Operations
 
 | Task | Command |
@@ -63,6 +94,69 @@ Session cookies switch to `Secure` automatically once requests arrive over HTTPS
 | Live release | `cat /opt/noor-al-ilm/current/REVISION` |
 
 **Restore a backup:** `sudo systemctl stop noor-al-ilm`. Then `gunzip -c <backup>-d1-*.sqlite.gz | sudo tee /var/lib/noor-al-ilm/state/v3/d1/miniflare-D1DatabaseObject/<same-hash>.sqlite >/dev/null`, delete the `-wal`/`-shm` files next to it, and run `sudo chown -R noor:noor /var/lib/noor-al-ilm` and `sudo systemctl start noor-al-ilm`. Also copy backups off the server, for example with an S3 sync or EBS snapshots.
+
+## Staff two-step sign-in (MFA)
+
+Reviewers, admins and ids in `REVIEWER_IDS` must pass a 6-digit authenticator code (or a recovery code) after the password. Learners are not affected.
+
+**Key delivery is NOT decided (QUESTIONS Q27).** How `MFA_SECRET_KEY` reaches the Worker on EC2 is open. Do **not** pass it with `--var`: command-line values are visible in process lists. Merge and deploy of this release wait for the owner's answer. The runbook (outside the repository: `plan/RUNBOOK-OD-04a.md`) lists the options to prove on staging first.
+
+**Setup (owner, once, after Q27 is answered).** Create `MFA_SECRET_KEY` (at least 32 random characters, for example from `openssl rand -base64 48`; a passphrase typed by hand is not acceptable) and deliver it by the method chosen for Q27. Never put the value in chat, in a file in the repository, or in a ticket. Without it, MFA enrolment and verification fail closed with `MFA_NOT_CONFIGURED`, so staff cannot sign in to staff pages. Keep a copy of the key in your password manager. If it is lost or changed, every stored MFA secret is unreadable (`MFA_SECRET_UNREADABLE`) and each staff user is reset by the server-owner sqlite step (step 3 below), because admins cannot pass MFA. Take an EBS snapshot, then apply migration `drizzle/0005_staff_mfa.sql` through your normal release step, then restart the service. Enrol your own admin account first.
+
+**Required setting for this release: `TRUST_PROXY_HEADER=x-real-ip`.** Without it every user shares one rate-limit bucket (`unknown`), so a few staff mistakes can block all staff. Check that it is set before the release goes live.
+
+**After the deploy.** Enrol every admin and reviewer account in one sitting, admin first. Keep sign-up closed until done. Change the password of any staff account that was ever shared. Then check `audit_events` for `MFA_ENROLLED` and confirm each row is yours. After an admin reset, ask the person to enrol at once and change their password. Until a person enrols, whoever knows their password could enrol their own device first. Note: someone with a staff password can also use up the 5 tries per 15 minutes and keep that user out; a different admin can reset it.
+
+**Lost device, step 1: recovery code.** The user signs in, opens `/mfa`, chooses "I lost my device" and types one of the 10 recovery codes they saved. Each code works once.
+
+**Lost device, step 2: reset by another admin.** An admin who has passed MFA opens `/admin/users` (or calls `PUT /api/admin/users` with `{"id":"<user id>","resetMfa":true}`). This clears that user's MFA, recovery codes and sessions. The user enrols again at the next sign-in. An admin cannot reset their own MFA. The action is written to the audit log as `MFA_RESET`.
+
+**Lost device, step 3: the last admin (server owner only).** Use this only when no admin can pass MFA and no recovery code is left. It is not run by the app and not part of a release.
+
+1. Take an EBS snapshot and run `sudo noor-backup manual`.
+2. `sudo systemctl stop noor-al-ilm`.
+3. Open the D1 sqlite file under `/var/lib/noor-al-ilm/state/v3/d1/miniflare-D1DatabaseObject/` with `sudo sqlite3 <file>.sqlite`.
+4. Run, with the admin's real id (find it with `SELECT id,email FROM users WHERE role='admin';`): `DELETE FROM user_mfa WHERE user_id='<id>'; DELETE FROM mfa_recovery_codes WHERE user_id='<id>'; DELETE FROM sessions WHERE user_id='<id>';`
+5. `sudo chown -R noor:noor /var/lib/noor-al-ilm` and `sudo systemctl start noor-al-ilm`.
+6. The admin signs in and enrols again at `/mfa`. Then write the event in your own log (the app does not record this step).
+
+## Staff sessions
+
+A staff session (reviewer, admin, or an id in `REVIEWER_IDS`) that has passed MFA ends after **30 minutes without use** (idle) or **8 hours after the MFA step** (absolute), whichever comes first. The person must sign in again and pass MFA again. Learner sessions keep their 30-day life.
+
+- **Settings (names only, both optional):** `STAFF_IDLE_MINUTES` (default 30) and `STAFF_ABSOLUTE_HOURS` (default 8). A value that is not a number, or is outside the range (idle 5 to 240 minutes, absolute 1 to 24 hours), is ignored and the default is used. Set them with the same method as the other settings; never in chat.
+- **What users see:** about two minutes before the idle end, a small notice appears in the header (Arabic and English) with a button "Stay signed in". The button counts as use. The notice checks the clock every 30 seconds, not every second. When the 8-hour limit is the one about to end the session, the notice says so and has no button, because nothing can extend it. After the end, the next page or call sends the person to sign in.
+- **Use is counted at most once a minute** (`sessions.last_seen_at`), so there is at most one extra database write per minute per staff session. An expired row is deleted by the call that finds it.
+- **New session id after MFA.** A successful MFA code or recovery code replaces the session with a new one and deletes the old one. Any session id captured before MFA stops working.
+- **Release step:** migration `drizzle/0008_session_limits.sql` adds the nullable column `sessions.last_seen_at`. It is additive. Take an EBS snapshot first, apply it through your normal release step, then restart. **Apply migration 0008 before the new build starts**, or every session read fails. A staff session with no `last_seen_at` counts from its MFA time, so staff who passed MFA more than 30 minutes before the release sign in again once.
+
+## Mail (password reset and email verification)
+
+Names only, no values here: `MAIL_PROVIDER`, `MAIL_FROM`, `MAIL_LINK_BASE`.
+
+- **No mail provider is chosen (QUESTIONS Q7).** Until the owner picks one and delivers its key, reset and verification do nothing visible on the live site: the pages and routes exist, the answer is always "if an account exists, we sent a link", and no mail leaves the server.
+- `MAIL_PROVIDER`: unset or `none` sends nothing and logs nothing with tokens. A named provider is **not built yet** and returns the code `MAIL_PROVIDER_NOT_IMPLEMENTED` (logged, no text). `outbox` exists for automated tests only and refuses to work outside them.
+- **`TRUST_PROXY_HEADER=x-real-ip` is REQUIRED** (see the required setting above). Without it all clients share one rate-limit bucket, so 5 reset or verify requests from anyone block everyone for an hour.
+- `MAIL_FROM`: the sender name only. The sending address belongs to the provider.
+- `MAIL_LINK_BASE`: the public site address used in links, for example `https://<your-domain>` with no path. Use `https://`. Plain `http://` is accepted only for `localhost` or `127.0.0.1`; any other value counts as unset. It is never taken from request headers. Without it no token is created and no mail is built.
+- The provider key will need a delivery method to the Worker. That is undecided (QUESTIONS Q27). Do **not** pass any key with `--var`: command-line values are visible in process lists.
+- Migration `drizzle/0006_email_tokens.sql` adds the table `auth_tokens` and the column `users.email_verified_at`. It is additive. Take an EBS snapshot first and apply it through your normal release step. This release must not be merged or deployed before Q7 and Q27 are answered.
+- Tokens: stored only as a SHA-256 hash, single use, 30 minutes (reset) and 24 hours (verify). The link carries the token in the part after `#`, so it is not sent to the server, to referrers or into logs.
+- A reset ends every session of that user and signs nobody in. Staff still pass MFA at the next sign-in.
+- Policy: an unverified account can use the site as before. Whether unverified accounts may earn coins is an open owner question (QUESTIONS Q29).
+
+## Audit log
+
+Migration `drizzle/0007_audit_chain.sql` is additive: new nullable columns on `audit_events` (`seq`, `prev_hash`, `hash`, `actor_role`, `result`, `source`, `reason`), two unique indexes, and two triggers. Take an EBS snapshot first. It is not applied by this change. The trigger SQL was added to the file by hand, because drizzle-kit snapshots cover tables and columns only.
+
+- **Append-only.** A trigger on UPDATE and one on DELETE stop every change to `audit_events` with the error `AUDIT_APPEND_ONLY`. Old rows stay valid and readable. Nothing is deleted. Retention is the owner's decision (QUESTIONS Q8).
+- **Hash chain.** Each new row stores `seq` (1, 2, 3, ...), the previous row's hash and its own SHA-256. The hash covers seq, previous hash, actor, role, action, target, detail, result, source, reason and time.
+- **Same transaction.** The audit row is written in the same batch as the action. If the audit write fails (a collision with another writer is retried, up to 5 tries; any other audit failure is not), the action is not applied and the route answers `503 AUDIT_UNAVAILABLE`. MFA enrolment follows this too: `enabled_at`, the session and the recovery codes are in the audited batch, so after a 503 the account is not enrolled. The spent code stays spent (replay guard), so the user retries with the next code. Exception: password-reset and email-verify links, and MFA recovery codes, are spent BEFORE the audit batch. After a 503 the user asks for a new link (or uses another recovery code).
+- **`id` is not hashed.** The row `id` is not part of the hash, so an id can change unseen. If a later migration rebuilds `audit_events` (create new table, copy, rename), the two triggers are dropped silently: re-create them in that migration. A test fails when `sqlite_master` lacks them.
+- **Verifier.** An admin with a verified MFA session can open `GET /api/admin/audit/verify`. It returns `{ ok, brokenAt, checked, skipped }`. `skipped` counts old rows without `seq`. It changes nothing. There is no page yet.
+- **What the verifier proves.** Rows written after 0007 were not edited, removed from the middle or reordered, unless the person also recomputed every later hash.
+- **What it does not prove.** Someone with the database file can remove the triggers and rewrite the whole chain from any point, and the verifier will pass. Only a copy kept off the server detects that. **The daily off-box copy is NOT built**: it waits for the owner's storage answer (QUESTIONS Q6 and Q8). Rows removed from the very end, and rows added without `seq`, are not detected either. Old rows (before 0007) are not covered at all.
+- Failed and denied attempts (for example a 403 on an admin route) are not logged yet. The viewer page is also not built (N-14b).
 
 ## Limits of this setup
 
