@@ -71,6 +71,13 @@
       "when": 1795745993273,
       "tag": "0009_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1795794674065,
+      "tag": "0010_admin_requests",
+      "breakpoints": true
     }
   ]
 }

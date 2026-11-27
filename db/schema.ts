@@ -55,3 +55,10 @@ export const settings = sqliteTable("settings", {
 export const rateLimits = sqliteTable("rate_limits", {
   key: text("key").primaryKey(), count: integer("count").notNull().default(0), resetAt: integer("reset_at").notNull()
 });
+
+/** Admin promotion requests (N-15c). From 2 active admins on, one admin requests and a different admin approves. At most one PENDING request per target. */
+export const adminRequests = sqliteTable("admin_requests", {
+  id: text("id").primaryKey(), targetId: text("target_id").notNull(), requestedBy: text("requested_by").notNull(), reason: text("reason").notNull(),
+  status: text("status").notNull().default("PENDING"), decidedBy: text("decided_by"), decidedAt: integer("decided_at"),
+  createdAt: integer("created_at").notNull(), expiresAt: integer("expires_at").notNull()
+}, t => [index("admin_requests_status_idx").on(t.status, t.expiresAt), uniqueIndex("admin_requests_one_pending").on(t.targetId).where(sql`status = 'PENDING'`)]);
