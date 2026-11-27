@@ -9,6 +9,7 @@ const CLOSED_EN = 'Registration is temporarily closed. Existing account holders 
 
 const messages: Record<string, string> = {
   INVALID_CREDENTIALS: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+  ACCOUNT_SUSPENDED: 'هذا الحساب موقوف. تواصل مع فريق الموقع من صفحة المساعدة.',
   EMAIL_TAKEN: 'هذا البريد مسجّل من قبل. جرّب تسجيل الدخول.',
   RATE_LIMITED: 'محاولات كثيرة. انتظر قليلًا ثم حاول مرة أخرى.',
   INVALID_INPUT: 'راجع المدخلات: كلمة المرور 10 أحرف على الأقل والاسم حرفان على الأقل.',

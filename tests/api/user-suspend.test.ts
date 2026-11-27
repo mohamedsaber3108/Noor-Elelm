@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { GET as usersGet, PUT as usersPut } from "@/app/api/admin/users/route";
 import { GET as meGet } from "@/app/api/me/route";
 import { POST as authPost } from "@/app/api/auth/[action]/route";
+import { DELETE as accountDelete } from "@/app/api/account/route";
 import { SESSION_COOKIE, createSession } from "@/app/auth";
 import { NOTE_MAX } from "@/lib/user-admin";
 import { setCookie } from "../mocks/next-headers";
@@ -84,6 +85,15 @@ describe("suspend and reactivate (N-18a)", () => {
     const t = await seedUser("learner");
     expect((await put({ id: t.id, role: "admin", ...STEP_UP })).status).toBe(200);
     expect(await count("SELECT COUNT(*) AS n FROM admin_requests")).toBe(0);
+  });
+  it("a suspended admin does not count: the last active admin cannot delete their own account", async () => {
+    const a1 = await signIn("admin");
+    const a2 = await seedUser("admin");
+    expect((await suspend(a2.id)).status).toBe(200);
+    const r = await accountDelete(call("DELETE", "/api/account", { password: PASSWORD }) as never);
+    expect(r.status).toBe(409);
+    expect((await r.json()).error).toBe("LAST_ADMIN");
+    expect(await count("SELECT COUNT(*) AS n FROM users WHERE id=?", a1.id)).toBe(1);
   });
   it("non-admins get 403; cross-origin gets 403 BAD_ORIGIN", async () => {
     const t = await seedUser("learner");

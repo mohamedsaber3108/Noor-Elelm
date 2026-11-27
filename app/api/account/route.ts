@@ -67,7 +67,7 @@ export async function DELETE(req: NextRequest) {
   const row = await env.DB.prepare("SELECT password_hash FROM users WHERE id=?").bind(u.userId).first<{ password_hash: string }>();
   if (!row || !(await verifyPassword(parsed.data.password, row.password_hash))) return err("INVALID_CREDENTIALS", 401);
   if (u.role === "admin") {
-    const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM users WHERE role='admin'").first<{ n: number }>();
+    const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM users WHERE role='admin' AND suspended_at IS NULL").first<{ n: number }>();
     if ((n?.n ?? 0) <= 1) return err("LAST_ADMIN", 409);
   }
   const id = u.userId;
