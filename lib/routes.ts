@@ -10,7 +10,7 @@ const worldBySlug = new Map(worlds.map((w) => [w.slug, w]));
 const staticRoutes = new Set([
   "/", "/explore", "/search", "/quran", "/tafsir", "/library", "/mosques", "/start", "/tracks", "/game", "/challenges",
   "/dashboard", "/methodology", "/sources", "/kids", "/family", "/pricing", "/rewards", "/support", "/privacy", "/terms",
-  "/accessibility", "/institutions", "/login", "/register", "/mfa", "/forgot", "/reset", "/verify-email", "/admin", "/admin/infographics", "/admin/corrections", "/admin/users", "/admin/settings", "/admin/audit", "/account",
+  "/accessibility", "/institutions", "/login", "/register", "/mfa", "/forgot", "/reset", "/verify-email", "/admin", "/admin/infographics", "/admin/corrections", "/admin/users", "/admin/settings", "/admin/audit", "/admin/editorial", "/account",
 ]);
 
 /** True when the path is a page the app can render. Used to return a real HTTP 404 for everything else. */
