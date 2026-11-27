@@ -1,6 +1,7 @@
 import {NextResponse} from 'next/server';
 import {getCurrentUser,isReviewer} from '@/app/auth';
 import {env} from 'cloudflare:workers';
+import {auditAdminDenied} from '@/lib/audit-denied';
 import records from '@/data/archive-records.json';
 
 type ArchiveRow={id:string;world:string;title:string;source:string;location:string;type:string};
@@ -11,10 +12,10 @@ const supplemental=all.find(r=>r.id==='NAI-1e1a6ac29175');
 const chosen=[...explicit,...(supplemental&&!explicit.includes(supplemental)?[supplemental]:[])].slice(0,200);
 const positions=new Map(all.map((r,i)=>[r.id,i+1]));
 
-export async function GET(){
+export async function GET(req?:Request){
  const user=await getCurrentUser();
  const allowed=isReviewer(user);
- if(!allowed)return NextResponse.json({error:'REVIEWER_ACCESS_REQUIRED'},{status:403});
+ if(!allowed){await auditAdminDenied(req,'/api/admin/visual-queue');return NextResponse.json({error:'REVIEWER_ACCESS_REQUIRED'},{status:403})}
  if(!env.DB)return NextResponse.json({error:'DATABASE_UNAVAILABLE'},{status:503});
  const placeholders=chosen.map(()=>'?').join(',');
  const recent=await env.DB.prepare(

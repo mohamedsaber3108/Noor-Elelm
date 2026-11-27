@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { z } from "zod";
 import { clientIp, getCurrentUser, isAdmin, sameOrigin } from "@/app/auth";
 import { AUDIT_UNAVAILABLE, auditStatement, runAudited } from "@/lib/audit";
+import { auditAdminDenied } from "@/lib/audit-denied";
 
 const err = (error: string, status: number) => NextResponse.json({ error }, { status });
 const ROLES = ["learner", "reviewer", "admin"] as const;
@@ -16,7 +17,7 @@ async function adminOnly() {
 /** GET ?q=&page= -> user list plus platform statistics. */
 export async function GET(req: NextRequest) {
   const admin = await adminOnly();
-  if (!admin) return err("ADMIN_ACCESS_REQUIRED", 403);
+  if (!admin) { await auditAdminDenied(req, "/api/admin/users"); return err("ADMIN_ACCESS_REQUIRED", 403); }
   const db = env.DB;
   if (!db) return err("DATABASE_UNAVAILABLE", 503);
   const q = (req.nextUrl.searchParams.get("q") || "").trim().slice(0, 80).toLowerCase();
@@ -64,7 +65,7 @@ const putSchema = z.union([
 /** PUT {id, role} changes a user's role. PUT {id, resetMfa:true} clears another user's MFA (lost device); the admin needs their own verified MFA session. */
 export async function PUT(req: NextRequest) {
   const admin = await adminOnly();
-  if (!admin) return err("ADMIN_ACCESS_REQUIRED", 403);
+  if (!admin) { await auditAdminDenied(req, "/api/admin/users"); return err("ADMIN_ACCESS_REQUIRED", 403); }
   if (!sameOrigin(req)) return err("BAD_ORIGIN", 403);
   const db = env.DB;
   if (!db) return err("DATABASE_UNAVAILABLE", 503);
@@ -103,7 +104,7 @@ export async function PUT(req: NextRequest) {
 /** DELETE {id} signs a user out everywhere (revokes sessions). */
 export async function DELETE(req: NextRequest) {
   const admin = await adminOnly();
-  if (!admin) return err("ADMIN_ACCESS_REQUIRED", 403);
+  if (!admin) { await auditAdminDenied(req, "/api/admin/users"); return err("ADMIN_ACCESS_REQUIRED", 403); }
   if (!sameOrigin(req)) return err("BAD_ORIGIN", 403);
   const db = env.DB;
   if (!db) return err("DATABASE_UNAVAILABLE", 503);
