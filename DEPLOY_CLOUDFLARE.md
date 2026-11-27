@@ -6,7 +6,7 @@ The app is a Vinext (Next-compatible) build that runs on Cloudflare Workers with
 
 - Email + password accounts (`/login`, `/register`, `/api/auth/*`). Passwords use PBKDF2-SHA256 (100k iterations, per-user salt). Session tokens are random, stored only as SHA-256 hashes, sent in an `HttpOnly`, `SameSite=Lax`, `Secure` (on HTTPS) cookie, valid 30 days.
 - Login and registration are rate limited in D1 (`rate_limits` table). Same-origin check on all auth POSTs.
-- Reviewer access: set a user's `role` to `reviewer` or `admin` in the `users` table, or list user IDs in the `REVIEWER_IDS` variable.
+- Reviewer access: set a user's `role` to a staff role (`researcher`, `fact_checker`, `language_editor`, `scholar`, `publisher`, `reviewer` or `admin`, see `lib/rbac.ts`) in the `users` table. No variable grants a role.
 - `GET /api/health` returns 200 when the DB is reachable, 503 otherwise.
 - Security headers (HSTS, nosniff, frame, referrer, permissions) are added in `worker/index.ts` for production builds.
 - Migrations: `drizzle/0000` to `0003_auth.sql`.
@@ -30,14 +30,12 @@ The app is a Vinext (Next-compatible) build that runs on Cloudflare Workers with
    - register at `/register`, then `npx wrangler d1 execute noor-al-ilm-prod --remote --command "UPDATE users SET role='admin' WHERE email='you@example.com'"`.
    After that, manage roles at `/admin/users`.
 9. Domain: add the domain to Cloudflare (DNS), then Workers & Pages > your worker > Settings > Domains & Routes > Add Custom Domain. HTTPS certificates are issued automatically.
-10. Optional: `npx wrangler secret put REVIEWER_IDS` (comma-separated user IDs).
 
 ## Variables
 
 | Name | Where | Purpose |
 |---|---|---|
 | `D1_DATABASE_ID`, `D1_DATABASE_NAME`, `WORKER_NAME` | build time | Written into `dist/server/wrangler.json` |
-| `REVIEWER_IDS` | Worker secret/var, optional | Extra reviewer user IDs |
 
 No other secrets are required. Never commit `.env*` or `.dev.vars*` (already ignored).
 

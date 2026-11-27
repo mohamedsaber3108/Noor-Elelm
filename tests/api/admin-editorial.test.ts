@@ -38,11 +38,11 @@ describe("admin editorial routes: access control", () => {
     await signIn("admin");
     expect((await run()).status).not.toBe(403);
   });
-  it("a learner listed in REVIEWER_IDS passes the reviewer check (known gap, see N-15)", async () => {
+  it("a learner listed in REVIEWER_IDS is refused: the env path is gone (N-15)", async () => {
     const u = await signIn("learner");
     setEnv("REVIEWER_IDS", u.id);
     await verifySessions(u.id);
-    expect((await importGet()).status).toBe(200);
+    expect((await importGet()).status).toBe(403);
   });
 });
 
@@ -161,7 +161,7 @@ describe("/api/admin/review", () => {
     await signIn("reviewer");
     expect((await reviewGet(req("GET", "/api/admin/review?contentId=NOPE") as never)).status).toBe(404);
   });
-  it.fails("BUG: reviews.role is always the literal REVIEWER, even for an admin", async () => {
+  it("reviews.role is the real database role (admin here)", async () => {
     await signIn("admin");
     await reviewPost(req("POST", "/api/admin/review", good) as never);
     expect((await db().prepare("SELECT role FROM reviews").first<{ role: string }>())?.role).toBe("admin");

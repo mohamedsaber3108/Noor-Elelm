@@ -97,7 +97,7 @@ Example line: `--var REGISTRATION_MODE:allowlist --var REGISTRATION_ALLOWLIST:<c
 
 ## Staff two-step sign-in (MFA)
 
-Reviewers, admins and ids in `REVIEWER_IDS` must pass a 6-digit authenticator code (or a recovery code) after the password. Learners are not affected.
+Staff (every role in `lib/rbac.ts` except `learner`) must pass a 6-digit authenticator code (or a recovery code) after the password. Learners are not affected.
 
 **Key delivery is NOT decided (QUESTIONS Q27).** How `MFA_SECRET_KEY` reaches the Worker on EC2 is open. Do **not** pass it with `--var`: command-line values are visible in process lists. Merge and deploy of this release wait for the owner's answer. The runbook (outside the repository: `plan/RUNBOOK-OD-04a.md`) lists the options to prove on staging first.
 
@@ -122,7 +122,7 @@ Reviewers, admins and ids in `REVIEWER_IDS` must pass a 6-digit authenticator co
 
 ## Staff sessions
 
-A staff session (reviewer, admin, or an id in `REVIEWER_IDS`) that has passed MFA ends after **30 minutes without use** (idle) or **8 hours after the MFA step** (absolute), whichever comes first. The person must sign in again and pass MFA again. Learner sessions keep their 30-day life.
+A staff session (any role except `learner`) that has passed MFA ends after **30 minutes without use** (idle) or **8 hours after the MFA step** (absolute), whichever comes first. The person must sign in again and pass MFA again. Learner sessions keep their 30-day life.
 
 - **Settings (names only, both optional):** `STAFF_IDLE_MINUTES` (default 30) and `STAFF_ABSOLUTE_HOURS` (default 8). A value that is not a number, or is outside the range (idle 5 to 240 minutes, absolute 1 to 24 hours), is ignored and the default is used. Set them with the same method as the other settings; never in chat.
 - **What users see:** about two minutes before the idle end, a small notice appears in the header (Arabic and English) with a button "Stay signed in". The button counts as use. The notice checks the clock every 30 seconds, not every second. When the 8-hour limit is the one about to end the session, the notice says so and has no button, because nothing can extend it. After the end, the next page or call sends the person to sign in.

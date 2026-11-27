@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { env } from "cloudflare:workers";
+import { isStaffRole } from "@/lib/rbac";
 
 export type AppUser = {
   userId: string; email: string; displayName: string; fullName: string | null; role: string; mfaVerified: boolean; emailVerified: boolean;
@@ -96,7 +97,7 @@ export async function currentSessionId(): Promise<string | null> {
 }
 
 /**
- * The signed-in user. Staff (reviewer, admin, REVIEWER_IDS) whose session is not MFA-verified count as signed out,
+ * The signed-in user. Staff (any role in lib/rbac.ts STAFF_ROLES) whose session is not MFA-verified count as signed out,
  * so every route refuses them. Only the MFA routes and the session probe pass `allowUnverified`.
  */
 export async function getCurrentUser(opts: { allowUnverified?: boolean; touch?: boolean } = {}): Promise<AppUser | null> {
@@ -129,15 +130,13 @@ export async function getCurrentUser(opts: { allowUnverified?: boolean; touch?: 
   return user;
 }
 
-/** Staff by role or by REVIEWER_IDS. Staff need an MFA-verified session (OD-04a). */
+/** Staff = a database role that holds any permission (lib/rbac.ts). Staff need an MFA-verified session (OD-04a). */
 export function isStaff(user: { userId: string; role: string } | null | undefined): boolean {
   if (!user) return false;
-  if (user.role === "reviewer" || user.role === "admin") return true;
-  const ids = String((env as unknown as Record<string, unknown>).REVIEWER_IDS || "").split(",").map((s) => s.trim()).filter(Boolean);
-  return ids.includes(user.userId);
+  return isStaffRole(user.role);
 }
 
-/** Reviewer access: DB role `reviewer`/`admin`, or user id listed in REVIEWER_IDS. Email allowlists are intentionally unsupported (emails are unverified). */
+/** Reviewer access: any staff role in the database (lib/rbac.ts) with an MFA-verified session. No env path grants it (REVIEWER_IDS removed, N-15). */
 export function isReviewer(user: AppUser | null | undefined): boolean {
   return !!user && isStaff(user) && user.mfaVerified;
 }

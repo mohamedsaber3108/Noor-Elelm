@@ -4,9 +4,9 @@ import { z } from "zod";
 import { clientIp, getCurrentUser, isAdmin, sameOrigin } from "@/app/auth";
 import { AUDIT_UNAVAILABLE, auditStatement, runAudited } from "@/lib/audit";
 import { auditAdminDenied } from "@/lib/audit-denied";
+import { ROLES } from "@/lib/rbac";
 
 const err = (error: string, status: number) => NextResponse.json({ error }, { status });
-const ROLES = ["learner", "reviewer", "admin"] as const;
 const PAGE = 25;
 
 async function adminOnly() {
