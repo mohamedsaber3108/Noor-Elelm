@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
+import { AUDIT_UNAVAILABLE, auditStatement, runAudited } from "@/lib/audit";
 import {
-  SESSION_COOKIE, createSession, getCurrentUser, hashPassword, isHttps, rateLimit, sameOrigin, sessionCookieOptions, verifyPassword,
+  SESSION_COOKIE, clientIp, createSession, getCurrentUser, hashPassword, isHttps, rateLimit, sameOrigin, sessionCookieOptions, verifyPassword,
 } from "@/app/auth";
 
 const err = (error: string, status: number) => NextResponse.json({ error }, { status });
@@ -43,11 +44,13 @@ export async function POST(req: NextRequest) {
   if (!row || !(await verifyPassword(parsed.data.current, row.password_hash))) return err("INVALID_CREDENTIALS", 401);
   const hash = await hashPassword(parsed.data.next);
   // Change the password and revoke every existing session in one batch, then start a fresh session.
-  await env.DB.batch([
-    env.DB.prepare("UPDATE users SET password_hash=? WHERE id=?").bind(hash, u.userId),
-    env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(u.userId),
-    env.DB.prepare("INSERT INTO audit_events(id,actor_id,action,target_id) VALUES(?,?,?,?)").bind(crypto.randomUUID(), u.userId, "PASSWORD_CHANGED", u.userId),
+  const db = env.DB;
+  const done = await runAudited(db, async () => [
+    db.prepare("UPDATE users SET password_hash=? WHERE id=?").bind(hash, u.userId),
+    db.prepare("DELETE FROM sessions WHERE user_id=?").bind(u.userId),
+    await auditStatement(db, { actorId: u.userId, actorRole: u.role, action: "PASSWORD_CHANGED", targetId: u.userId, source: clientIp(req) }),
   ]);
+  if (!done) return err(AUDIT_UNAVAILABLE, 503);
   const res = NextResponse.json({ ok: true });
   res.cookies.set(SESSION_COOKIE, await createSession(u.userId, req.headers.get("user-agent"), { mfaVerified: u.mfaVerified }), sessionCookieOptions(isSecure(req)));
   return res;
@@ -68,20 +71,22 @@ export async function DELETE(req: NextRequest) {
     if ((n?.n ?? 0) <= 1) return err("LAST_ADMIN", 409);
   }
   const id = u.userId;
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(id),
-    env.DB.prepare("DELETE FROM user_mfa WHERE user_id=?").bind(id),
-    env.DB.prepare("DELETE FROM mfa_recovery_codes WHERE user_id=?").bind(id),
-    env.DB.prepare("DELETE FROM auth_tokens WHERE user_id=?").bind(id),
-    env.DB.prepare("DELETE FROM bookmarks WHERE user_id=?").bind(id),
-    env.DB.prepare("DELETE FROM progress WHERE user_id=?").bind(id),
-    env.DB.prepare("DELETE FROM quiz_served WHERE user_id=?").bind(id),
-    env.DB.prepare("DELETE FROM quiz_attempts WHERE user_id=?").bind(id),
-    env.DB.prepare("DELETE FROM point_ledger WHERE user_id=?").bind(id),
-    env.DB.prepare("DELETE FROM redemptions WHERE user_id=?").bind(id),
-    env.DB.prepare("DELETE FROM users WHERE id=?").bind(id),
-    env.DB.prepare("INSERT INTO audit_events(id,actor_id,action,target_id) VALUES(?,?,?,?)").bind(crypto.randomUUID(), "system", "ACCOUNT_DELETED", id),
+  const db = env.DB;
+  const done = await runAudited(db, async () => [
+    db.prepare("DELETE FROM sessions WHERE user_id=?").bind(id),
+    db.prepare("DELETE FROM user_mfa WHERE user_id=?").bind(id),
+    db.prepare("DELETE FROM mfa_recovery_codes WHERE user_id=?").bind(id),
+    db.prepare("DELETE FROM auth_tokens WHERE user_id=?").bind(id),
+    db.prepare("DELETE FROM bookmarks WHERE user_id=?").bind(id),
+    db.prepare("DELETE FROM progress WHERE user_id=?").bind(id),
+    db.prepare("DELETE FROM quiz_served WHERE user_id=?").bind(id),
+    db.prepare("DELETE FROM quiz_attempts WHERE user_id=?").bind(id),
+    db.prepare("DELETE FROM point_ledger WHERE user_id=?").bind(id),
+    db.prepare("DELETE FROM redemptions WHERE user_id=?").bind(id),
+    db.prepare("DELETE FROM users WHERE id=?").bind(id),
+    await auditStatement(db, { actorId: "system", actorRole: "system", action: "ACCOUNT_DELETED", targetId: id, source: clientIp(req) }),
   ]);
+  if (!done) return err(AUDIT_UNAVAILABLE, 503);
   const res = NextResponse.json({ ok: true });
   res.cookies.set(SESSION_COOKIE, "", sessionCookieOptions(isSecure(req), 0));
   return res;

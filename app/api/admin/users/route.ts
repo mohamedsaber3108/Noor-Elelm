@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
-import { getCurrentUser, isAdmin, sameOrigin } from "@/app/auth";
+import { clientIp, getCurrentUser, isAdmin, sameOrigin } from "@/app/auth";
+import { AUDIT_UNAVAILABLE, auditStatement, runAudited } from "@/lib/audit";
 
 const err = (error: string, status: number) => NextResponse.json({ error }, { status });
 const ROLES = ["learner", "reviewer", "admin"] as const;
@@ -75,12 +76,13 @@ export async function PUT(req: NextRequest) {
     const who = await db.prepare("SELECT id FROM users WHERE id=?").bind(id).first();
     if (!who) return err("NOT_FOUND", 404);
     // The target must enrol again at next sign-in: MFA rows, recovery codes and all their sessions go.
-    await db.batch([
+    const done = await runAudited(db, async () => [
       db.prepare("DELETE FROM user_mfa WHERE user_id=?").bind(id),
       db.prepare("DELETE FROM mfa_recovery_codes WHERE user_id=?").bind(id),
       db.prepare("DELETE FROM sessions WHERE user_id=?").bind(id),
-      db.prepare("INSERT INTO audit_events(id,actor_id,action,target_id,detail_json) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(), admin.userId, "MFA_RESET", id, "{}"),
+      await auditStatement(db, { actorId: admin.userId, actorRole: admin.role, action: "MFA_RESET", targetId: id, source: clientIp(req) }),
     ]);
+    if (!done) return err(AUDIT_UNAVAILABLE, 503);
     return NextResponse.json({ ok: true });
   }
   const { role } = parsed.data;
@@ -90,11 +92,11 @@ export async function PUT(req: NextRequest) {
     const n = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE role='admin'").first<{ n: number }>();
     if ((n?.n ?? 0) <= 1) return err("LAST_ADMIN", 409);
   }
-  await db.batch([
+  const done = await runAudited(db, async () => [
     db.prepare("UPDATE users SET role=? WHERE id=?").bind(role, id),
-    db.prepare("INSERT INTO audit_events(id,actor_id,action,target_id,detail_json) VALUES(?,?,?,?,?)")
-      .bind(crypto.randomUUID(), admin.userId, "ROLE_CHANGED", id, JSON.stringify({ from: target.role, to: role })),
+    await auditStatement(db, { actorId: admin.userId, actorRole: admin.role, action: "ROLE_CHANGED", targetId: id, detail: { from: target.role, to: role }, source: clientIp(req) }),
   ]);
+  if (!done) return err(AUDIT_UNAVAILABLE, 503);
   return NextResponse.json({ ok: true });
 }
 
@@ -107,9 +109,10 @@ export async function DELETE(req: NextRequest) {
   if (!db) return err("DATABASE_UNAVAILABLE", 503);
   const parsed = z.object({ id: z.string().min(1).max(64) }).safeParse(await req.json().catch(() => null));
   if (!parsed.success) return err("INVALID_INPUT", 400);
-  await db.batch([
+  const done = await runAudited(db, async () => [
     db.prepare("DELETE FROM sessions WHERE user_id=?").bind(parsed.data.id),
-    db.prepare("INSERT INTO audit_events(id,actor_id,action,target_id) VALUES(?,?,?,?)").bind(crypto.randomUUID(), admin.userId, "SESSIONS_REVOKED", parsed.data.id),
+    await auditStatement(db, { actorId: admin.userId, actorRole: admin.role, action: "SESSIONS_REVOKED", targetId: parsed.data.id, detail: {}, source: clientIp(req) }),
   ]);
+  if (!done) return err(AUDIT_UNAVAILABLE, 503);
   return NextResponse.json({ ok: true });
 }

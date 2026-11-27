@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { env } from "cloudflare:workers";
 import { clientIp, getCurrentUser, isStaff, rateLimit, sameOrigin, type AppUser } from "@/app/auth";
 import { mfaConfigured } from "@/lib/mfa";
+import { auditStatement } from "@/lib/audit";
 
 export const err = (error: string, status: number) => NextResponse.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
 export const ok = (body: object, status = 200) => NextResponse.json({ ok: true, ...body }, { status, headers: { "Cache-Control": "no-store" } });
@@ -27,10 +28,9 @@ export async function triesAllowed(userId: string, ip: string, scope = "mfa") {
   return a && b;
 }
 
-/** Audit row. `detail` must never hold a secret, a code or a hash. */
-export function auditStmt(actor: string, action: string, target: string, detail: Record<string, string | number | boolean> = {}) {
-  return env.DB!.prepare("INSERT INTO audit_events(id,actor_id,action,target_id,detail_json) VALUES(?,?,?,?,?)")
-    .bind(crypto.randomUUID(), actor, action, target, JSON.stringify(detail));
+/** Audit row for a signed-in staff user (`detail` must never hold a secret, a code or a hash; lib/audit.ts refuses such keys). */
+export function auditStmt(user: AppUser, ip: string, action: string, detail: Record<string, string | number | boolean> = {}) {
+  return auditStatement(env.DB!, { actorId: user.userId, actorRole: user.role, action, targetId: user.userId, detail, source: ip });
 }
 
 export const BAD_CODE = "MFA_INVALID_CODE";
