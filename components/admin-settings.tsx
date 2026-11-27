@@ -28,14 +28,17 @@ export function AdminSettings() {
   const [draft, setDraft] = useState<Record<string, boolean | string>>({}), [reason, setReason] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; ar: string; en: string } | null>(null), [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
+  // keepDraft: refresh only the server values (module list, stored values), never the person's unsaved edits.
+  const load = useCallback(async (keepDraft = false) => {
     try {
       const r = await fetch('/api/admin/settings', { cache: 'no-store' });
       if (r.status === 403 || r.status === 401) { setState('denied'); return; }
       if (!r.ok) throw Error();
       const d = await r.json() as Data;
-      setData(d); setDraft(Object.fromEntries(d.settings.map(s => [s.key, s.value]))); setState('ok');
-    } catch { setState('error'); }
+      setData(d);
+      if (!keepDraft) setDraft(Object.fromEntries(d.settings.map(s => [s.key, s.value])));
+      setState('ok');
+    } catch { if (!keepDraft) setState('error'); }
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -51,14 +54,15 @@ export function AdminSettings() {
         if (!r.ok) {
           const d = await r.json().catch(() => ({})) as { error?: string };
           const e2 = ERR[d.error || ''] || ['تعذر الحفظ.', 'Could not save.'];
-          setMsg({ ok: false, ar: e2[0], en: e2[1] }); await load(); return;
+          // Keep the draft and the reason so nothing typed is lost; refresh only the stored values.
+          setMsg({ ok: false, ar: e2[0], en: e2[1] }); await load(true); return;
         }
       }
       setReason(''); setMsg({ ok: true, ar: 'تم الحفظ وسُجّل في سجل التدقيق.', en: 'Saved and recorded in the audit log.' }); await load();
-    } catch { setMsg({ ok: false, ar: 'تعذر الاتصال بالخادم.', en: 'Could not reach the server.' }); } finally { setBusy(false); }
+    } catch { setMsg({ ok: false, ar: 'تعذر الاتصال بالخادم. لم تُحذف تعديلاتك.', en: 'Could not reach the server. Your edits are kept.' }); } finally { setBusy(false); }
   }
 
-  if (state === 'denied') return <main className="page-main"><div className="page-hero"><h1><span lang="ar" dir="rtl">الإعدادات</span> <span lang="en" dir="ltr">Settings</span></h1></div><div className="empty-state"><span lang="ar" dir="rtl">هذه الصفحة للمديرين فقط.</span> <span lang="en" dir="ltr">This page is for admins only.</span> <Link href="/login?return_to=%2Fadmin%2Fsettings">تسجيل الدخول / Sign in</Link></div></main>;
+  if (state === 'denied') return <main className="page-main"><div className="page-hero"><h1><span lang="ar" dir="rtl">الإعدادات</span> <span lang="en" dir="ltr">Settings</span></h1></div><div className="empty-state"><span lang="ar" dir="rtl">هذه الصفحة للمديرين فقط.</span> <span lang="en" dir="ltr">This page is for admins only.</span> <Link href="/login?return_to=%2Fadmin%2Fsettings"><span lang="ar" dir="rtl">تسجيل الدخول</span> <span lang="en" dir="ltr">Sign in</span></Link></div></main>;
   return <main className="page-main"><div className="page-hero"><span className="eyebrow">الإدارة</span><h1><span lang="ar" dir="rtl">الإعدادات والوحدات</span> <span lang="en" dir="ltr">Settings and modules</span></h1>
     <p><span lang="ar" dir="rtl">كل تغيير يحتاج سببًا ويُسجَّل في سجل التدقيق. النصوص نص عادي فقط.</span> <span lang="en" dir="ltr">Every change needs a reason and is recorded in the audit log. Text is plain text only.</span></p></div>
     <nav className="admin-nav"><Link href="/admin">المراجعة</Link> · <Link href="/admin/users">المستخدمون</Link> · <Link href="/admin/corrections">البلاغات</Link> · <Link href="/admin/infographics">الإنفوجرافيك</Link></nav>

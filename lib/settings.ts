@@ -1,18 +1,21 @@
 /**
  * Admin settings and module registry (N-17).
  * A fixed registry of known keys: no free keys. Each key has a zod schema and a default. Values are stored as JSON
- * strings in the `settings` table (migration 0009). Reads are tolerant: a missing table, a missing row or a corrupt
- * value gives the default, so a settings fault can never take the site down. Text values are plain text: the UI
- * renders them as text nodes only, and tags are refused on write.
+ * strings in the `settings` table (migration 0009).
+ * Reads: a missing table (migration 0009 not applied yet), a missing row or a corrupt value gives the default.
+ * Any OTHER database error is treated as unknown state: feature flags then read as OFF (fail closed, the kill switch
+ * must not fail open), while text notes still fall back to their defaults. Text values are plain text: the UI renders
+ * them as text nodes only, and tags, control characters and bidi control marks are refused on write.
  * These keys hold no secrets. Do not add a secret key here.
  */
 import { z } from "zod";
 import { AUDIT_UNAVAILABLE, auditStatement, runAudited } from "@/lib/audit";
 
-// Plain text, 1 to 500 chars, no tags and no control characters (newline and tab allowed).
+// Plain text, 1 to 500 chars, no tags, no control characters (newline and tab allowed), no bidi control marks.
 const plain = z.string().trim().min(1).max(500)
   .refine((s) => !/[<>]/.test(s), "NO_TAGS")
-  .refine((s) => !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(s), "NO_CONTROL");
+  .refine((s) => !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(s), "NO_CONTROL")
+  .refine((s) => !/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/.test(s), "NO_BIDI_CONTROL");
 
 export const PRICING_NOTE_AR = "الخطط المدفوعة غير معروضة حاليًا. المعرفة الأساسية متاحة مجانًا حاليًا، ولا يوجد بيع أو دفع الآن.";
 export const PRICING_NOTE_EN = "Not available yet. Basic knowledge is free for now.";
@@ -33,8 +36,13 @@ export type SettingValue = boolean | string;
 export const SETTING_KEYS = Object.keys(SETTINGS) as SettingKey[];
 export const isSettingKey = (k: unknown): k is SettingKey => typeof k === "string" && Object.hasOwn(SETTINGS, k);
 const isPublicKey = (k: string) => k.startsWith("site.") || k.startsWith("feature.");
+const isFeatureKey = (k: string) => k.startsWith("feature.");
 
 type Row = { key: string; value: string; updated_at: number | null; updated_by: string | null };
+/** rows: what was read; failed: true when the read failed for a reason other than a missing table. */
+type Read = { rows: Row[]; failed: boolean };
+
+const isNoSuchTable = (e: unknown) => /no such table/i.test(String((e as { message?: unknown })?.message ?? e));
 
 function parse(key: SettingKey, raw: string | undefined): SettingValue {
   if (raw === undefined) return SETTINGS[key].default;
@@ -46,36 +54,44 @@ function parse(key: SettingKey, raw: string | undefined): SettingValue {
   }
 }
 
-async function rows(db: D1Database | undefined): Promise<Row[]> {
-  if (!db) return [];
+async function read(db: D1Database | undefined): Promise<Read> {
+  if (!db) return { rows: [], failed: false };
   try {
-    return (await db.prepare("SELECT key,value,updated_at,updated_by FROM settings").all<Row>()).results;
-  } catch {
-    return []; // table missing (migration 0009 not applied yet): defaults apply
+    return { rows: (await db.prepare("SELECT key,value,updated_at,updated_by FROM settings").all<Row>()).results, failed: false };
+  } catch (e) {
+    // Only a missing table (migration 0009 not applied yet) means "use the defaults".
+    if (isNoSuchTable(e)) return { rows: [], failed: false };
+    return { rows: [], failed: true };
   }
 }
 
+/** Value of one key. On a failed read (not a missing table) a feature flag reads as false; text keys give the default. */
+function valueOf(key: SettingKey, r: Read): SettingValue {
+  if (r.failed && isFeatureKey(key)) return false;
+  return parse(key, r.rows.find((x) => x.key === key)?.value);
+}
+
 export async function getSetting<K extends SettingKey>(db: D1Database | undefined, key: K): Promise<SettingValue> {
-  const all = await rows(db);
-  return parse(key, all.find((r) => r.key === key)?.value);
+  return valueOf(key, await read(db));
 }
 
 /** Every key with its current value, default and last change (admin view). */
 export async function getAllSettings(db: D1Database | undefined) {
-  const all = await rows(db);
+  const r = await read(db);
   return SETTING_KEYS.map((key) => {
-    const r = all.find((x) => x.key === key);
-    return { key, value: parse(key, r?.value), default: SETTINGS[key].default, updatedAt: r?.updated_at ?? null, updatedBy: r?.updated_by ?? null };
+    const row = r.rows.find((x) => x.key === key);
+    return { key, value: valueOf(key, r), default: SETTINGS[key].default, updatedAt: row?.updated_at ?? null, updatedBy: row?.updated_by ?? null };
   });
 }
 
 /** Only site.* and feature.* keys, as a plain object. */
 export async function getPublicSettings(db: D1Database | undefined): Promise<Record<string, SettingValue>> {
-  const all = await rows(db);
-  return Object.fromEntries(SETTING_KEYS.filter(isPublicKey).map((k) => [k, parse(k, all.find((r) => r.key === k)?.value)]));
+  const r = await read(db);
+  return Object.fromEntries(SETTING_KEYS.filter(isPublicKey).map((k) => [k, valueOf(k, r)]));
 }
 
-export const featureOn = async (db: D1Database | undefined, key: "feature.game_enabled" | "feature.corrections_enabled") => (await getSetting(db, key)) !== false;
+/** True only when the flag is on. A database error other than a missing table gives false (fail closed). */
+export const featureOn = async (db: D1Database | undefined, key: "feature.game_enabled" | "feature.corrections_enabled") => (await getSetting(db, key)) === true;
 
 export type SetResult = "ok" | "UNKNOWN_KEY" | "INVALID_VALUE" | typeof AUDIT_UNAVAILABLE;
 

@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { GET as adminGet, PUT as adminPut } from "@/app/api/admin/settings/route";
 import { GET as publicGet } from "@/app/api/settings/route";
 import { GET as quizNext } from "@/app/api/quiz/next/route";
 import { POST as quizAnswer } from "@/app/api/quiz/answer/route";
 import { POST as corrPost } from "@/app/api/corrections/route";
 import summaries from "@/data/archive-summaries.json";
-import { PRICING_NOTE_AR, PRICING_NOTE_EN, REGISTRATION_NOTE_AR, SETTINGS, SETTING_KEYS, getSetting } from "@/lib/settings";
+import { PRICING_NOTE_AR, PRICING_NOTE_EN, REGISTRATION_NOTE_AR, SETTINGS, SETTING_KEYS, featureOn, getSetting } from "@/lib/settings";
 import { EVIL, call, count, db, signIn, signInUnverified } from "../helpers";
 import { env } from "cloudflare:workers";
 
@@ -36,6 +36,53 @@ describe("defaults and tolerant reads", () => {
   it("a missing settings table gives the defaults instead of an error", async () => {
     await db().prepare("DROP TABLE settings").run();
     expect(await getSetting(DB(), "feature.game_enabled")).toBe(true);
+  });
+});
+
+describe("flags fail closed on a database error", () => {
+  const level = encodeURIComponent("سهل");
+  const report = { contentId: (summaries as { id: string }[])[0].id, message: "This record has a wrong date in the second line." };
+  // Make every read of the settings table fail with an error that is NOT "no such table"; other queries work.
+  const breakSettingsReads = () => {
+    const d = env.DB as unknown as { prepare: (sql: string) => unknown };
+    const orig = d.prepare.bind(d);
+    return vi.spyOn(d, "prepare").mockImplementation((sql: string) => {
+      if (/FROM settings/i.test(sql)) throw new Error("D1_ERROR: disk I/O error");
+      return orig(sql);
+    });
+  };
+  it("a read error other than a missing table turns the flags off: quiz next, quiz answer and corrections answer 503", async () => {
+    await signIn("learner");
+    const spy = breakSettingsReads();
+    try {
+      expect(await featureOn(DB(), "feature.game_enabled")).toBe(false);
+      expect(await featureOn(DB(), "feature.corrections_enabled")).toBe(false);
+      const results = [
+        await quizNext(call("GET", "/api/quiz/next?level=" + level)),
+        await quizAnswer(call("POST", "/api/quiz/answer", { questionId: "x", answerKey: "a", token: "t" })),
+        await corrPost(call("POST", "/api/corrections", report)),
+      ];
+      for (const res of results) {
+        expect(res.status).toBe(503);
+        expect((await res.json()).error).toBe("FEATURE_OFF");
+      }
+      // Text notes still fall back to their defaults.
+      expect(await getSetting(DB(), "site.pricing_note_en")).toBe(PRICING_NOTE_EN);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await count("SELECT COUNT(*) AS n FROM audit_events WHERE action='CORRECTION_REPORT'")).toBe(0);
+  });
+  it("a missing settings table keeps today's behaviour: flags on, routes work", async () => {
+    await signIn("learner");
+    await db().prepare("DROP TABLE settings").run();
+    expect(await featureOn(DB(), "feature.game_enabled")).toBe(true);
+    expect((await quizNext(call("GET", "/api/quiz/next?level=" + level))).status).toBe(200);
+    expect((await corrPost(call("POST", "/api/corrections", report))).status).toBe(201);
+  });
+  it("a corrupt stored flag still gives the default (on)", async () => {
+    await db().prepare("INSERT INTO settings(key,value) VALUES('feature.corrections_enabled','{not json')").run();
+    expect(await featureOn(DB(), "feature.corrections_enabled")).toBe(true);
   });
 });
 
@@ -102,11 +149,12 @@ describe("PUT /api/admin/settings", () => {
     for (const reason of [undefined, "", "short", "x".repeat(301)]) expect((await put({ key: "feature.game_enabled", value: false, reason })).status).toBe(400);
     expect((await put({ key: "feature.game_enabled", value: false, reason: "x".repeat(300) })).status).toBe(200);
   });
-  it("validates values: wrong type, empty, too long, tags and control characters are refused", async () => {
+  it("validates values: wrong type, empty, too long, tags, control characters and bidi control marks are refused", async () => {
     await signIn("admin");
     const bad: [string, unknown][] = [
       ["feature.game_enabled", "false"], ["feature.game_enabled", 1], ["site.pricing_note_en", true], ["site.pricing_note_en", ""], ["site.pricing_note_en", "   "],
       ["site.pricing_note_en", "x".repeat(501)], ["site.pricing_note_en", "<script>alert(1)</script>"], ["site.pricing_note_ar", "a<b"], ["site.pricing_note_en", "a\u0000b"],
+      ["site.pricing_note_en", "abc\u202Edef"], ["site.pricing_note_ar", "\u200Fنص"], ["site.registration_note_en", "a\u2066b\u2069"],
     ];
     for (const [k, v] of bad) expect((await set(k, v)).status).toBe(400);
     expect(await count("SELECT COUNT(*) AS n FROM settings")).toBe(0);
