@@ -31,7 +31,7 @@ type Chained = {
 
 // A detail key that looks like a secret is a bug in the caller: refuse it instead of storing it.
 // This checks key NAMES only. A secret under a harmless key, or inside a free-text value, is not caught.
-const SECRET_KEY = /pass(word)?|token|secret|code|hash|key|cookie|otp/i;
+export const SECRET_KEY = /pass(word)?|token|secret|code|hash|key|cookie|otp/i;
 
 const field = (v: string | number | null) => (v === null ? "-1:" : `${String(v).length}:${String(v)}`);
 
