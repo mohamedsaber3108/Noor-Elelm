@@ -93,6 +93,16 @@ describe("staff idle and absolute limits", () => {
       expect(staffLimitsMs()).toEqual({ idle: 30 * MIN, absolute: 8 * HOUR });
     }
   });
+  it("env values outside the range fall back; the edges are accepted", () => {
+    const cases: [string, string, number, number][] = [
+      ["4", "0.5", 30, 8], ["241", "25", 30, 8], ["5", "1", 5, 1], ["240", "24", 240, 24], ["60", "12", 60, 12],
+    ];
+    for (const [i, a, wi, wa] of cases) {
+      setEnv("STAFF_IDLE_MINUTES", i);
+      setEnv("STAFF_ABSOLUTE_HOURS", a);
+      expect(staffLimitsMs()).toEqual({ idle: wi * MIN, absolute: wa * HOUR });
+    }
+  });
   it("a short idle limit from env ends a session", async () => {
     await signIn("admin");
     setEnv("STAFF_IDLE_MINUTES", "5");
@@ -112,11 +122,13 @@ describe("session probe", () => {
   });
   it("is capped by the absolute limit", async () => {
     await signIn("admin");
+    expect((await probe()).staffEndsBy).toBe("idle");
     offset = 7 * HOUR + 50 * MIN;
     await db().prepare("UPDATE sessions SET last_seen_at=?").bind(Date.now()).run();
-    const s = (await probe()).staffExpiresInSeconds;
-    expect(s).toBeLessThanOrEqual(10 * 60);
-    expect(s).toBeGreaterThan(0);
+    const u = await probe();
+    expect(u.staffExpiresInSeconds).toBeLessThanOrEqual(10 * 60);
+    expect(u.staffExpiresInSeconds).toBeGreaterThan(0);
+    expect(u.staffEndsBy).toBe("absolute");
   });
   it("peek does not count as use; a normal read does", async () => {
     const u = await signIn("reviewer");
@@ -169,6 +181,37 @@ describe("session id rotation after MFA", () => {
     setCookie(SESSION_COOKIE, fresh!);
     expect((await corrGet()).status).toBe(200);
     expect(await count("SELECT COUNT(*) AS n FROM audit_events WHERE action='MFA_RECOVERY_USED' AND actor_id=?", u.id)).toBe(1);
+  });
+  it("verify again on an already verified session: a new cookie, the old one dead, still one row", async () => {
+    const u = await signInUnverified("admin");
+    const e = await (await post(enroll, undefined)).json();
+    const first = newCookie(await post(verify, { code: await codeFor(e.secret) }))!;
+    setCookie(SESSION_COOKIE, first);
+    const r = await post(verify, { code: await codeFor(e.secret, 1) });
+    expect(r.status).toBe(200);
+    const second = newCookie(r)!;
+    expect(second).toBeTruthy();
+    expect(second).not.toBe(first);
+    setCookie(SESSION_COOKIE, first);
+    expect((await corrGet()).status).toBe(403);
+    setCookie(SESSION_COOKIE, second);
+    expect((await corrGet()).status).toBe(200);
+    expect(await count("SELECT COUNT(*) AS n FROM sessions WHERE user_id=?", u.id)).toBe(1);
+  });
+  it("audit failure during rotation: 503, no cookie, no new session row, old session untouched", async () => {
+    const u = await signInUnverified("admin");
+    const e = await (await post(enroll, undefined)).json();
+    const first = newCookie(await post(verify, { code: await codeFor(e.secret) }))!;
+    const old = await createSession(u.id, "vitest"); // a second, unverified session of the same user
+    setCookie(SESSION_COOKIE, old);
+    const before = await count("SELECT COUNT(*) AS n FROM sessions WHERE user_id=?", u.id);
+    await db().prepare("CREATE TRIGGER test_audit_down BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'AUDIT_DOWN'); END").run();
+    const r = await post(verify, { code: await codeFor(e.secret, 1) });
+    await db().prepare("DROP TRIGGER test_audit_down").run();
+    expect(r.status).toBe(503);
+    expect(newCookie(r)).toBeUndefined();
+    expect(await count("SELECT COUNT(*) AS n FROM sessions WHERE user_id=?", u.id)).toBe(before);
+    expect(first).toBeTruthy();
   });
   it("a wrong code does not rotate or set a cookie", async () => {
     const u = await signInUnverified("admin");

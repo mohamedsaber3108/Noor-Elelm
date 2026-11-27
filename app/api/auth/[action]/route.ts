@@ -22,7 +22,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ action: str
   const u = await getCurrentUser({ allowUnverified: true, touch: new URL(req.url).searchParams.get("peek") !== "1" });
   // `mfa` tells the page that a staff session must finish MFA first; nothing else works until then.
   const mfa = u && isStaff(u) && !u.mfaVerified ? "required" : undefined;
-  return NextResponse.json({ user: u ? { name: u.displayName, email: u.email, reviewer: isReviewer(u), emailVerified: u.emailVerified, staffExpiresInSeconds: u.staffExpiresInSeconds, ...(mfa ? { mfa } : {}) } : null, registrationOpen: registrationMode() !== "closed" }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ user: u ? { name: u.displayName, email: u.email, reviewer: isReviewer(u), emailVerified: u.emailVerified, staffExpiresInSeconds: u.staffExpiresInSeconds, staffEndsBy: u.staffEndsBy, ...(mfa ? { mfa } : {}) } : null, registrationOpen: registrationMode() !== "closed" }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ action: string }> }) {

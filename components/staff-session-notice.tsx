@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 const WARN_SECONDS = 120; // the notice shows this long before the session ends
 const TICK_MS = 30_000; // the clock is checked every 30 seconds, so a screen reader is never told every second
 
-type Probe = { user: { staffExpiresInSeconds?: number | null } | null };
+type Probe = { user: { staffExpiresInSeconds?: number | null; staffEndsBy?: 'idle' | 'absolute' | null } | null };
 
 /**
  * Staff sessions end after 30 minutes without use (N-11). Shows a calm notice two minutes before, with a button
@@ -13,13 +13,14 @@ type Probe = { user: { staffExpiresInSeconds?: number | null } | null };
  */
 export function StaffSessionNotice() {
   const [show, setShow] = useState(false);
+  const [endsBy, setEndsBy] = useState<'idle' | 'absolute'>('idle');
   const deadline = useRef<number | null>(null);
 
   const read = async (touch: boolean) => {
     try {
       const d = await (await fetch(touch ? '/api/auth/session' : '/api/auth/session?peek=1', { cache: 'no-store' })).json() as Probe;
       const left = d.user?.staffExpiresInSeconds;
-      if (typeof left === 'number') { deadline.current = Date.now() + left * 1000; return left; }
+      if (typeof left === 'number') { setEndsBy(d.user?.staffEndsBy === 'absolute' ? 'absolute' : 'idle'); deadline.current = Date.now() + left * 1000; return left; }
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- full reload on purpose: the session is gone
       if (deadline.current !== null && !d.user) window.location.href = '/login'; // the session ended
       deadline.current = null;
@@ -37,16 +38,29 @@ export function StaffSessionNotice() {
     return () => clearInterval(t);
   }, []);
 
-  if (!show) return null;
+  // The role=status container is always in the page and starts empty; the text is added later so screen readers announce it.
   return (
-    <div role="status" className="staff-session-notice" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '6px 14px', border: '1px solid var(--line)', borderRadius: 12 }}>
-      <span>
-        <span lang="ar" dir="rtl">ستنتهي جلستك قريبًا لأنك لم تستخدمها.</span>{' '}
-        <span lang="en" dir="ltr">Your session will end soon because it has not been used.</span>
-      </span>
-      <button className="account-link" onClick={async () => { await read(true); setShow(false); }}>
-        <span lang="ar" dir="rtl">ابقَ مسجّلًا</span>{' '}<span lang="en" dir="ltr">Stay signed in</span>
-      </button>
+    <div role="status">
+      {show && (
+        <div className="staff-session-notice" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '6px 14px', border: '1px solid var(--line)', borderRadius: 12 }}>
+          {endsBy === 'absolute' ? (
+            <span>
+              <span lang="ar" dir="rtl">ستنتهي جلستك قريبًا لأنها بلغت الحد الزمني، وعليك تسجيل الدخول من جديد.</span>{' '}
+              <span lang="en" dir="ltr">Your session will end soon because it reached its time limit. You will need to sign in again.</span>
+            </span>
+          ) : (
+            <>
+              <span>
+                <span lang="ar" dir="rtl">ستنتهي جلستك قريبًا لأنك لم تستخدمها.</span>{' '}
+                <span lang="en" dir="ltr">Your session will end soon because it has not been used.</span>
+              </span>
+              <button className="account-link" onClick={async () => { await read(true); setShow(false); }}>
+                <span lang="ar" dir="rtl">ابقَ مسجّلًا</span>{' '}<span lang="en" dir="ltr">Stay signed in</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

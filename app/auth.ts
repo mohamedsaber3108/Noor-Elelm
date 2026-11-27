@@ -5,6 +5,8 @@ export type AppUser = {
   userId: string; email: string; displayName: string; fullName: string | null; role: string; mfaVerified: boolean; emailVerified: boolean;
   /** Seconds until a verified staff session ends (idle or absolute limit, whichever is first). null for learners and unverified sessions. */
   staffExpiresInSeconds: number | null;
+  /** Which limit ends the session first: "idle" (use extends it) or "absolute" (nothing extends it). null when staffExpiresInSeconds is null. */
+  staffEndsBy: "idle" | "absolute" | null;
 };
 
 export const SESSION_COOKIE = "nai_session";
@@ -14,10 +16,11 @@ export const STAFF_IDLE_MINUTES = 30;
 export const STAFF_ABSOLUTE_HOURS = 8;
 /** last_seen_at is written at most once per this many ms. */
 const LAST_SEEN_WRITE_MS = 60_000;
-const positive = (v: unknown, fallback: number) => { const n = Number(String(v ?? "").trim()); return String(v ?? "").trim() !== "" && Number.isFinite(n) && n > 0 ? n : fallback; };
+/** Allowed ranges: idle 5 to 240 minutes, absolute 1 to 24 hours. Out-of-range or bad values use the default. */
+const bounded = (v: unknown, fallback: number, min: number, max: number) => { const s = String(v ?? "").trim(); const n = Number(s); return s !== "" && Number.isFinite(n) && n >= min && n <= max ? n : fallback; };
 export function staffLimitsMs() {
   const e = env as unknown as Record<string, unknown>;
-  return { idle: positive(e.STAFF_IDLE_MINUTES, STAFF_IDLE_MINUTES) * 60_000, absolute: positive(e.STAFF_ABSOLUTE_HOURS, STAFF_ABSOLUTE_HOURS) * 3_600_000 };
+  return { idle: bounded(e.STAFF_IDLE_MINUTES, STAFF_IDLE_MINUTES, 5, 240) * 60_000, absolute: bounded(e.STAFF_ABSOLUTE_HOURS, STAFF_ABSOLUTE_HOURS, 1, 24) * 3_600_000 };
 }
 
 const PBKDF2_ITERATIONS = 100_000; // Workers WebCrypto maximum
@@ -107,7 +110,7 @@ export async function getCurrentUser(opts: { allowUnverified?: boolean; touch?: 
     "SELECT u.id,u.email,u.display_name,u.role,u.email_verified_at,s.mfa_verified_at,s.last_seen_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires_at>?",
   ).bind(sid, now).first<{ id: string; email: string; display_name: string; role: string; email_verified_at: number | null; mfa_verified_at: number | null; last_seen_at: number | null }>();
   if (!row) return null;
-  const user: AppUser = { userId: row.id, email: row.email, displayName: row.display_name, fullName: row.display_name, role: row.role, mfaVerified: row.mfa_verified_at != null, emailVerified: row.email_verified_at != null, staffExpiresInSeconds: null };
+  const user: AppUser = { userId: row.id, email: row.email, displayName: row.display_name, fullName: row.display_name, role: row.role, mfaVerified: row.mfa_verified_at != null, emailVerified: row.email_verified_at != null, staffExpiresInSeconds: null, staffEndsBy: null };
   // Staff idle and absolute limits (N-11). Learners keep the 30-day life. An unverified staff session is not "in use" yet.
   if (isStaff(user) && row.mfa_verified_at != null) {
     const { idle, absolute } = staffLimitsMs();
@@ -120,7 +123,9 @@ export async function getCurrentUser(opts: { allowUnverified?: boolean; touch?: 
       await env.DB.prepare("UPDATE sessions SET last_seen_at=? WHERE id=?").bind(now, sid).run();
       lastSeen = now;
     }
-    user.staffExpiresInSeconds = Math.max(0, Math.floor(Math.min(lastSeen + idle - now, row.mfa_verified_at + absolute - now) / 1000));
+    const idleLeft = lastSeen + idle - now, absLeft = row.mfa_verified_at + absolute - now;
+    user.staffExpiresInSeconds = Math.max(0, Math.floor(Math.min(idleLeft, absLeft) / 1000));
+    user.staffEndsBy = absLeft < idleLeft ? "absolute" : "idle";
   }
   if (isStaff(user) && !user.mfaVerified && !opts.allowUnverified) return null;
   return user;
