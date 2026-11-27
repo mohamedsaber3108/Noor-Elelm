@@ -4,7 +4,7 @@ import { GET as reviewGet, POST as reviewPost } from "@/app/api/admin/review/rou
 import { GET as usersGet, PUT as usersPut } from "@/app/api/admin/users/route";
 import { GET as corrGet } from "@/app/api/corrections/route";
 import summaries from "@/data/archive-summaries.json";
-import { call, count, db, seedUser, setEnv, signIn, verifySessions } from "../helpers";
+import { STEP_UP, call, count, db, seedUser, setEnv, signIn, verifySessions } from "../helpers";
 
 const ID = (summaries as { id: string }[])[0].id;
 const EDITORIAL = ["researcher", "fact_checker", "language_editor", "scholar", "publisher", "reviewer"] as const;
@@ -69,7 +69,7 @@ describe("role change uses the catalogue", () => {
   it.each(EDITORIAL)("an admin can set a user to %s", async (role) => {
     await signIn("admin");
     const t = await seedUser("learner");
-    expect((await usersPut(call("PUT", "/api/admin/users", { id: t.id, role }))).status).toBe(200);
+    expect((await usersPut(call("PUT", "/api/admin/users", { id: t.id, role, ...STEP_UP }))).status).toBe(200);
     expect((await db().prepare("SELECT role FROM users WHERE id=?").bind(t.id).first<{ role: string }>())?.role).toBe(role);
   });
   it("a role outside the catalogue is refused with 400", async () => {

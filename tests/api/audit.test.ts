@@ -4,7 +4,7 @@ import { env } from "cloudflare:workers";
 import { GET as verifyGet } from "@/app/api/admin/audit/verify/route";
 import { DELETE as usersDel, PUT as usersPut } from "@/app/api/admin/users/route";
 import { GENESIS, auditStatement, canonical, runAudited, verifyAuditChain } from "@/lib/audit";
-import { call, count, db, seedUser, signIn, signInUnverified } from "../helpers";
+import { STEP_UP, call, count, db, seedUser, signIn, signInUnverified } from "../helpers";
 
 const D = () => env.DB as unknown as D1Database;
 const put = (body: unknown) => usersPut(call("PUT", "/api/admin/users", body));
@@ -109,7 +109,7 @@ describe("concurrent writers and failed audit writes", () => {
     await signIn("admin");
     const t = await seedUser("learner");
     await db().prepare("CREATE TRIGGER test_audit_down BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'AUDIT_DOWN'); END").run();
-    const res = await put({ id: t.id, role: "reviewer" });
+    const res = await put({ id: t.id, role: "reviewer", ...STEP_UP });
     expect(res.status).toBe(503);
     expect((await res.json()).error).toBe("AUDIT_UNAVAILABLE");
     expect((await db().prepare("SELECT role FROM users WHERE id=?").bind(t.id).first<{ role: string }>())?.role).toBe("learner");
@@ -121,7 +121,7 @@ describe("converted writers", () => {
   it("role change, sessions revoked and MFA reset each write a chained row with role and source", async () => {
     const admin = await signIn("admin");
     const t = await seedUser("learner");
-    expect((await put({ id: t.id, role: "reviewer" })).status).toBe(200);
+    expect((await put({ id: t.id, role: "reviewer", ...STEP_UP })).status).toBe(200);
     expect((await usersDel(call("DELETE", "/api/admin/users", { id: t.id }))).status).toBe(200);
     expect((await put({ id: t.id, resetMfa: true })).status).toBe(200);
     const r = await rows();

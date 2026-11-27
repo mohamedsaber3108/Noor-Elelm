@@ -10,10 +10,19 @@ const labels: [string, string][] = [
   ['correctionReports', 'بلاغات تصحيح'], ['importedDrafts', 'مسودات مستوردة'], ['reviews', 'قرارات مراجعة'],
 ];
 const roleNames: Record<string, string> = { learner: 'متعلّم', researcher: 'باحث', fact_checker: 'مدقق حقائق', language_editor: 'محرر لغوي', scholar: 'عالِم', publisher: 'ناشر', reviewer: 'مراجع', admin: 'مدير' };
+const errorText: Record<string, string> = {
+  LAST_ADMIN: 'لا يمكن إزالة آخر مدير.',
+  SELF_RESET_REFUSED: 'لا يمكنك إعادة ضبط حسابك بنفسك.',
+  STEP_UP_REQUIRED: 'اكتب كلمة المرور الخاصة بك للتأكيد.',
+  STEP_UP_FAILED: 'كلمة المرور غير صحيحة.',
+  REASON_REQUIRED: 'اكتب سببًا من ١٠ إلى ٣٠٠ حرف.',
+  RATE_LIMITED: 'محاولات كثيرة. انتظر ١٥ دقيقة ثم حاول مرة أخرى.',
+};
 
 export function AdminUsers() {
   const [data, setData] = useState<Data | null>(null), [state, setState] = useState<'loading' | 'denied' | 'ok' | 'error'>('loading');
   const [q, setQ] = useState(''), [page, setPage] = useState(1), [msg, setMsg] = useState('');
+  const [pending, setPending] = useState<{ id: string; name: string; role: string } | null>(null), [pw, setPw] = useState(''), [why, setWhy] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -28,21 +37,37 @@ export function AdminUsers() {
   async function act(method: 'PUT' | 'DELETE', body: object, ok: string) {
     const r = await fetch('/api/admin/users', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({})) as { error?: string };
-    setMsg(r.ok ? ok : d.error === 'LAST_ADMIN' ? 'لا يمكن إزالة آخر مدير.' : d.error === 'SELF_RESET_REFUSED' ? 'لا يمكنك إعادة ضبط حسابك بنفسك.' : 'تعذر تنفيذ العملية.');
+    setMsg(r.ok ? ok : (d.error && errorText[d.error]) || 'تعذر تنفيذ العملية.');
     if (r.ok) load();
+    return r.ok;
+  }
+
+  async function confirmRole(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pending) return;
+    const ok = await act('PUT', { id: pending.id, role: pending.role, password: pw, reason: why }, 'تم تحديث الدور.');
+    setPw('');
+    if (ok) { setPending(null); setWhy(''); }
   }
 
   if (state === 'denied') return <main className="page-main"><div className="page-hero"><h1>إدارة المستخدمين</h1></div><div className="empty-state">هذه الصفحة للمديرين فقط. <Link href="/login?return_to=%2Fadmin%2Fusers">تسجيل الدخول</Link></div></main>;
   const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
-  return <main className="page-main"><div className="page-hero"><span className="eyebrow">الإدارة</span><h1>المستخدمون والإحصاءات</h1><p>بيانات حقيقية من قاعدة البيانات. تغيير الدور يُسجَّل في سجل التدقيق.</p></div>
-    <nav className="admin-nav"><Link href="/admin">المراجعة</Link> · <Link href="/admin/corrections">البلاغات</Link> · <Link href="/admin/infographics">الإنفوجرافيك</Link> · <Link href="/admin/settings">الإعدادات</Link> · <Link href="/admin/audit">سجل التدقيق</Link> · <Link href="/admin/editorial">لوحة التحرير</Link></nav>
+  return <main className="page-main"><div className="page-hero"><span className="eyebrow">الإدارة</span><h1>المستخدمون والإحصاءات</h1><p>بيانات حقيقية من قاعدة البيانات. تغيير الدور يحتاج كلمة مرورك وسببًا، ويُسجَّل في سجل التدقيق.</p></div>
+    <nav className="admin-nav" aria-label="أقسام الإدارة"><Link href="/admin">المراجعة</Link> · <Link href="/admin/corrections">البلاغات</Link> · <Link href="/admin/infographics">الإنفوجرافيك</Link> · <Link href="/admin/settings">الإعدادات</Link> · <Link href="/admin/audit">سجل التدقيق</Link> · <Link href="/admin/editorial">لوحة التحرير</Link></nav>
     {state === 'error' && <div role="alert" className="error-note">تعذر تحميل البيانات.</div>}
     {data && <div className="admin-stats">{labels.map(([k, l]) => <div key={k}><span>{l}</span><strong>{String(data.stats[k] ?? 0)}</strong></div>)}</div>}
     {msg && <p role="status">{msg}</p>}
+    {pending && <form className="correction-panel" aria-labelledby="stepup-title" onSubmit={confirmRole} onKeyDown={e => { if (e.key === 'Escape') setPending(null); }}>
+      <h2 id="stepup-title">تأكيد تغيير الدور</h2>
+      <p>{pending.name}: <strong>{roleNames[pending.role] || pending.role}</strong></p>
+      <label>كلمة المرور الخاصة بك<input type="password" autoComplete="current-password" required maxLength={200} value={pw} onChange={e => setPw(e.target.value)} autoFocus /></label>
+      <label>السبب (١٠ إلى ٣٠٠ حرف)<textarea required minLength={10} maxLength={300} rows={3} value={why} onChange={e => setWhy(e.target.value)} /></label>
+      <button className="btn-primary" disabled={!pw || why.trim().length < 10}>تأكيد</button> <button type="button" className="btn-outline" onClick={() => setPending(null)}>إلغاء</button>
+    </form>}
     <label className="admin-search">بحث<input type="search" value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="الاسم أو البريد" /></label>
     {data && <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>الاسم</th><th>البريد</th><th>الدور</th><th>النقاط</th><th>آخر دخول</th><th>إجراءات</th></tr></thead><tbody>
       {data.users.map(u => <tr key={u.id}><td>{u.name}</td><td dir="ltr">{u.email}</td>
-        <td><select aria-label={'دور ' + u.name} value={u.role} onChange={e => act('PUT', { id: u.id, role: e.target.value }, 'تم تحديث الدور.')}>{Object.entries(roleNames).map(([v, n]) => <option key={v} value={v}>{n}</option>)}</select></td>
+        <td><select aria-label={'دور ' + u.name} value={pending?.id === u.id ? pending.role : u.role} onChange={e => { setPending(e.target.value === u.role ? null : { id: u.id, name: u.name, role: e.target.value }); setPw(''); setWhy(''); setMsg(''); }}>{Object.entries(roleNames).map(([v, n]) => <option key={v} value={v}>{n}</option>)}</select></td>
         <td>{u.coins}</td><td dir="ltr">{u.lastLoginAt?.slice(0, 16) ?? '—'}</td>
         <td><button className="btn-outline" onClick={() => act('DELETE', { id: u.id }, 'تم إنهاء جلسات المستخدم.')}>إنهاء الجلسات</button>{u.role !== 'learner' && <button className="btn-outline" aria-label={'إعادة ضبط التحقق بخطوتين لـ ' + u.name} onClick={() => { if (window.confirm('إعادة ضبط التحقق بخطوتين لهذا المستخدم؟ سيُنهى دخوله ويُسجَّل الإجراء.')) act('PUT', { id: u.id, resetMfa: true }, 'تمت إعادة ضبط التحقق بخطوتين.'); }}>إعادة ضبط التحقق</button>}</td></tr>)}
       {data.users.length === 0 && <tr><td colSpan={6}>لا نتائج.</td></tr>}
