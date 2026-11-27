@@ -2,15 +2,7 @@ import {NextResponse} from 'next/server';
 import {getCurrentUser,isReviewer} from '@/app/auth';
 import {env} from 'cloudflare:workers';
 import {auditAdminDenied} from '@/lib/audit-denied';
-import records from '@/data/archive-records.json';
-
-type ArchiveRow={id:string;world:string;title:string;source:string;location:string;type:string};
-const all=records as ArchiveRow[];
-const explicit=all.filter(r=>r.type==='claim_candidate'&&/^\s*(?:ال)?إنفو(?:غرافيك|غراف)/.test(r.title)&&r.title.length>22);
-// Complete the first production batch with a specific visual topic from the sira archive.
-const supplemental=all.find(r=>r.id==='NAI-1e1a6ac29175');
-const chosen=[...explicit,...(supplemental&&!explicit.includes(supplemental)?[supplemental]:[])].slice(0,200);
-const positions=new Map(all.map((r,i)=>[r.id,i+1]));
+import {archivePositions as positions,visualQueue as chosen} from '@/lib/visual-queue';
 
 export async function GET(req?:Request){
  const user=await getCurrentUser();
