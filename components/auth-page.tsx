@@ -58,6 +58,6 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       {error && <p role="alert" className="error-note">{error}</p>}
       <button className="btn-primary" disabled={busy}>{busy ? 'لحظة…' : register ? 'إنشاء الحساب' : 'دخول'}</button>
     </form>}
-    {register ? <Link href={'/login' + search}>لدي حساب. تسجيل الدخول</Link> : <Link href={'/register' + search}>ليس لدي حساب. إنشاء حساب</Link>}
+    {register ? <Link href={'/login' + search}>لدي حساب. تسجيل الدخول</Link> : <><Link href={'/register' + search}>ليس لدي حساب. إنشاء حساب</Link><br /><Link href="/forgot">نسيت كلمة المرور؟ <span lang="en" dir="ltr">Forgot your password?</span></Link></>}
     </div></main>;
 }

@@ -120,6 +120,21 @@ Reviewers, admins and ids in `REVIEWER_IDS` must pass a 6-digit authenticator co
 5. `sudo chown -R noor:noor /var/lib/noor-al-ilm` and `sudo systemctl start noor-al-ilm`.
 6. The admin signs in and enrols again at `/mfa`. Then write the event in your own log (the app does not record this step).
 
+## Mail (password reset and email verification)
+
+Names only, no values here: `MAIL_PROVIDER`, `MAIL_FROM`, `MAIL_LINK_BASE`.
+
+- **No mail provider is chosen (QUESTIONS Q7).** Until the owner picks one and delivers its key, reset and verification do nothing visible on the live site: the pages and routes exist, the answer is always "if an account exists, we sent a link", and no mail leaves the server.
+- `MAIL_PROVIDER`: unset or `none` sends nothing and logs nothing with tokens. A named provider is **not built yet** and returns the code `MAIL_PROVIDER_NOT_IMPLEMENTED` (logged, no text). `outbox` exists for automated tests only and refuses to work outside them.
+- **`TRUST_PROXY_HEADER=x-real-ip` is REQUIRED** (see the required setting above). Without it all clients share one rate-limit bucket, so 5 reset or verify requests from anyone block everyone for an hour.
+- `MAIL_FROM`: the sender name only. The sending address belongs to the provider.
+- `MAIL_LINK_BASE`: the public site address used in links, for example `https://<your-domain>` with no path. Use `https://`. Plain `http://` is accepted only for `localhost` or `127.0.0.1`; any other value counts as unset. It is never taken from request headers. Without it no token is created and no mail is built.
+- The provider key will need a delivery method to the Worker. That is undecided (QUESTIONS Q27). Do **not** pass any key with `--var`: command-line values are visible in process lists.
+- Migration `drizzle/0006_email_tokens.sql` adds the table `auth_tokens` and the column `users.email_verified_at`. It is additive. Take an EBS snapshot first and apply it through your normal release step. This release must not be merged or deployed before Q7 and Q27 are answered.
+- Tokens: stored only as a SHA-256 hash, single use, 30 minutes (reset) and 24 hours (verify). The link carries the token in the part after `#`, so it is not sent to the server, to referrers or into logs.
+- A reset ends every session of that user and signs nobody in. Staff still pass MFA at the next sign-in.
+- Policy: an unverified account can use the site as before. Whether unverified accounts may earn coins is an open owner question (QUESTIONS Q29).
+
 ## Limits of this setup
 
 - One server means one point of failure. Use EBS snapshots plus the SQLite backups. To scale out, deploy the same build to Cloudflare Workers + D1 (`DEPLOY_CLOUDFLARE.md`).

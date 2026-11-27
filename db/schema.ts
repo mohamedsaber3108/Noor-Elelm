@@ -29,8 +29,14 @@ export const auditEvents = sqliteTable("audit_events",{id:text("id").primaryKey(
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(), email: text("email").notNull(), displayName: text("display_name").notNull(),
   passwordHash: text("password_hash").notNull(), role: text("role").notNull().default("learner"),
-  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`), lastLoginAt: text("last_login_at")
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`), lastLoginAt: text("last_login_at"), emailVerifiedAt: integer("email_verified_at")
 }, t => [uniqueIndex("users_email_unique").on(t.email)]);
+// Single-use reset and verify tokens. Only the SHA-256 of the token is stored (OD-04b).
+export const authTokens = sqliteTable("auth_tokens", {
+  id: text("id").primaryKey(), userId: text("user_id").notNull(), kind: text("kind", { enum: ["reset", "verify"] }).notNull(),
+  tokenHash: text("token_hash").notNull(), expiresAt: integer("expires_at").notNull(), usedAt: integer("used_at"),
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`)
+}, t => [index("auth_tokens_hash_idx").on(t.tokenHash), index("auth_tokens_user_kind_idx").on(t.userId, t.kind)]);
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(), userId: text("user_id").notNull(), expiresAt: integer("expires_at").notNull(),
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`), userAgent: text("user_agent"), mfaVerifiedAt: integer("mfa_verified_at")

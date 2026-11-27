@@ -5,6 +5,7 @@ import {
   SESSION_COOKIE, clientIp, createSession, destroySession, getCurrentUser, hashPassword, isReviewer, isStaff,
   isHttps, rateLimit, registrationAllowed, registrationMode, sameOrigin, sessionCookieOptions, verifyPassword,
 } from "@/app/auth";
+import { issueMail } from "@/lib/auth-tokens";
 
 const email = z.string().trim().toLowerCase().email().max(254);
 const registerSchema = z.object({ email, password: z.string().min(10).max(200), name: z.string().trim().min(2).max(60) });
@@ -20,7 +21,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ action: st
   const u = await getCurrentUser({ allowUnverified: true });
   // `mfa` tells the page that a staff session must finish MFA first; nothing else works until then.
   const mfa = u && isStaff(u) && !u.mfaVerified ? "required" : undefined;
-  return NextResponse.json({ user: u ? { name: u.displayName, email: u.email, reviewer: isReviewer(u), ...(mfa ? { mfa } : {}) } : null, registrationOpen: registrationMode() !== "closed" }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ user: u ? { name: u.displayName, email: u.email, reviewer: isReviewer(u), emailVerified: u.emailVerified, ...(mfa ? { mfa } : {}) } : null, registrationOpen: registrationMode() !== "closed" }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
       if (String(e).includes("UNIQUE")) return err("EMAIL_TAKEN", 409);
       throw e;
     }
+    await issueMail({ id, email: mail }, "verify"); // never throws; sign-in does not wait for verification
     const res = NextResponse.json({ ok: true }, { status: 201 });
     res.cookies.set(SESSION_COOKIE, await createSession(id, req.headers.get("user-agent")), sessionCookieOptions(isSecure(req)));
     return res;
