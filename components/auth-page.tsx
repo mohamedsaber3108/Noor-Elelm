@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from 'react';
 import Link from '@/components/full-page-link';
+import { usePublicSettings, textOr } from '@/components/use-public-settings';
 
 // One source for the closed notice (page state and the refused-request path).
 const CLOSED_AR = 'التسجيل مغلق مؤقتًا. يمكن لأصحاب الحسابات الحالية تسجيل الدخول.';
@@ -23,6 +24,7 @@ function returnTarget() {
 
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const register = mode === 'register';
+  const ps = usePublicSettings();
   const [name, setName] = useState(''), [email, setEmail] = useState(''), [password, setPassword] = useState('');
   const refused = useRef(false), noticeRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState(''), [busy, setBusy] = useState(false);
@@ -50,7 +52,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const pending = register && regOpen === null;
   const invite = register && regOpen === true;
   return <main className="page-main"><div className="page-hero"><span className="eyebrow">حسابك</span><h1>{invite ? 'أنشئ حسابًا.' : register ? 'حسابك.' : 'سجّل الدخول.'}</h1><p>{invite ? 'احفظ تقدمك ومفضلتك ونقاط التجربة.' : register ? 'يمكن لأصحاب الحسابات الحالية تسجيل الدخول.' : 'تابع من حيث توقفت.'}</p></div>
-    <div className="correction-panel">{closed ? <div ref={noticeRef} tabIndex={-1} role="status" className="error-note"><p lang="ar" dir="rtl">{CLOSED_AR}</p><p lang="en" dir="ltr">{CLOSED_EN}</p></div> : pending ? <div role="status"><p lang="ar" dir="rtl">جارٍ التحميل…</p><p lang="en" dir="ltr">Loading…</p></div> : <form onSubmit={submit}>
+    <div className="correction-panel">{closed ? <div ref={noticeRef} tabIndex={-1} role="status" className="error-note"><p lang="ar" dir="rtl">{textOr(ps['site.registration_note_ar'], CLOSED_AR)}</p><p lang="en" dir="ltr">{textOr(ps['site.registration_note_en'], CLOSED_EN)}</p></div> : pending ? <div role="status"><p lang="ar" dir="rtl">جارٍ التحميل…</p><p lang="en" dir="ltr">Loading…</p></div> : <form onSubmit={submit}>
       {register && <label>الاسم<input required minLength={2} maxLength={60} autoComplete="name" value={name} onChange={e => setName(e.target.value)} /></label>}
       <label>البريد الإلكتروني<input required type="email" dir="ltr" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} /></label>
       <label>كلمة المرور<input required type="password" dir="ltr" minLength={register ? 10 : 1} maxLength={200} autoComplete={register ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} /></label>

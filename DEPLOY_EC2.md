@@ -160,6 +160,16 @@ Migration `drizzle/0007_audit_chain.sql` is additive: new nullable columns on `a
 - **Denied and failed rows.** `ADMIN_DENIED` (result `denied`): a signed-in user, including staff without MFA, was refused with 403 on an admin route; the target is the method and route path. `LOGIN_FAILED` (result `failed`): a wrong password for an existing account; actor and target are the account id. A wrong password for an unknown email writes nothing. `MFA_FAILED` is unchanged. Anonymous requests write nothing. At most 5 rows per actor and action per 15 minutes are written, so these rows show that attempts happened, not how many. If the audit write fails, the 403 or 401 is answered as before (no 500). These rows are in the hash chain like the others.
 - **Table growth.** Nothing is deleted. Rows grow with use, and denied and failed rows add to it (at most 5 per actor and action per 15 minutes). Retention and any archive are the owner's decision (QUESTIONS Q8).
 
+## Settings
+
+Migration `drizzle/0009_settings.sql` is additive: one new table `settings` (`key`, `value`, `updated_at`, `updated_by`). Take an EBS snapshot first. It is not applied by this change. Until it is applied the site works on the defaults (reads are tolerant), but saving a setting fails.
+
+- **Keys (a fixed list, no free keys).** `feature.game_enabled` and `feature.corrections_enabled` (on/off); `site.pricing_note_ar`, `site.pricing_note_en`, `site.registration_note_ar`, `site.registration_note_en` (plain text, up to 500 characters, no tags).
+- **Defaults keep today's behaviour.** Both flags default to on, and the notes default to the wording the site shows today. With an empty table nothing looks different.
+- **Flag off.** `/api/quiz/next`, `/api/quiz/answer` and `POST /api/corrections` answer `503 FEATURE_OFF`. The game and correction pages show a bilingual notice.
+- **Who and how.** An admin with a verified MFA session uses `/admin/settings` (or `PUT /api/admin/settings` with `key`, `value`, `reason` of 10 to 300 characters). Every change writes a `SETTING_CHANGED` audit row in the same batch. If the audit write fails the setting is not changed. Public `GET /api/settings` returns only `site.*` and `feature.*` keys, cached for 30 seconds, so a change can take that long to show.
+- **Not built.** The step-up dialog with a second approver (ADMIN.md s.4) for "disable a feature for everyone". Today the guard is admin + MFA + a written reason + the audit row.
+
 ## Limits of this setup
 
 - One server means one point of failure. Use EBS snapshots plus the SQLite backups. To scale out, deploy the same build to Cloudflare Workers + D1 (`DEPLOY_CLOUDFLARE.md`).
