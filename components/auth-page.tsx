@@ -6,10 +6,13 @@ import { usePublicSettings, textOr } from '@/components/use-public-settings';
 // One source for the closed notice (page state and the refused-request path).
 const CLOSED_AR = 'التسجيل مغلق مؤقتًا. يمكن لأصحاب الحسابات الحالية تسجيل الدخول.';
 const CLOSED_EN = 'Registration is temporarily closed. Existing account holders can still sign in.';
+// Shown together when sign-in is refused because an admin suspended the account (N-18a).
+const SUSPENDED_AR = 'هذا الحساب موقوف. تواصل مع فريق الموقع من صفحة المساعدة.';
+const SUSPENDED_EN = 'Your account is suspended. Contact support from the help page.';
 
 const messages: Record<string, string> = {
   INVALID_CREDENTIALS: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
-  ACCOUNT_SUSPENDED: 'هذا الحساب موقوف. تواصل مع فريق الموقع من صفحة المساعدة.',
+  ACCOUNT_SUSPENDED: SUSPENDED_AR,
   EMAIL_TAKEN: 'هذا البريد مسجّل من قبل. جرّب تسجيل الدخول.',
   RATE_LIMITED: 'محاولات كثيرة. انتظر قليلًا ثم حاول مرة أخرى.',
   INVALID_INPUT: 'راجع المدخلات: كلمة المرور 10 أحرف على الأقل والاسم حرفان على الأقل.',
@@ -58,7 +61,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       <label>البريد الإلكتروني<input required type="email" dir="ltr" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} /></label>
       <label>كلمة المرور<input required type="password" dir="ltr" minLength={register ? 10 : 1} maxLength={200} autoComplete={register ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} /></label>
       {register && <small>10 أحرف على الأقل.</small>}
-      {error && <p role="alert" className="error-note">{error}</p>}
+      {error && (error === SUSPENDED_AR ? <div role="alert" className="error-note"><p lang="ar" dir="rtl">{SUSPENDED_AR}</p><p lang="en" dir="ltr">{SUSPENDED_EN}</p></div> : <p role="alert" className="error-note">{error}</p>)}
       <button className="btn-primary" disabled={busy}>{busy ? 'لحظة…' : register ? 'إنشاء الحساب' : 'دخول'}</button>
     </form>}
     {register ? <Link href={'/login' + search}>لدي حساب. تسجيل الدخول</Link> : <><Link href={'/register' + search}>ليس لدي حساب. إنشاء حساب</Link><br /><Link href="/forgot">نسيت كلمة المرور؟ <span lang="en" dir="ltr">Forgot your password?</span></Link></>}

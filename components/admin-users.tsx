@@ -96,7 +96,7 @@ export function AdminUsers() {
     {pending && <form className="correction-panel" aria-labelledby="stepup-title" onSubmit={confirm} onKeyDown={e => { if (e.key === 'Escape') closeForm(pending); }}>
       <h2 id="stepup-title">{formTitle[pending.kind]}</h2>
       <p><bdi>{pending.name}</bdi>{pending.kind === 'role' && <>: <strong>{roleNames[pending.role ?? ''] || pending.role}</strong></>}</p>
-      {pending.kind === 'suspend' && <p>سيُنهى كل دخول لهذا الحساب، ولن يستطيع تسجيل الدخول حتى تُعاد تفعيله.</p>}
+      {pending.kind === 'suspend' && <p>سيُنهى كل دخول لهذا الحساب، ولن يستطيع تسجيل الدخول حتى يُعاد تفعيل الحساب.</p>}
       <label>كلمة المرور الخاصة بك<input type="password" autoComplete="current-password" required maxLength={200} value={pw} onChange={e => setPw(e.target.value)} aria-describedby="stepup-error" autoFocus /></label>
       <p id="stepup-error" role="alert" className={formErr ? 'error-note' : undefined}>{formErr}</p>
       <label>السبب (١٠ إلى ٣٠٠ حرف)<textarea required minLength={10} maxLength={300} rows={3} value={why} onChange={e => setWhy(e.target.value)} aria-describedby="stepup-count" /></label>

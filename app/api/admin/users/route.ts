@@ -107,9 +107,10 @@ export async function PUT(req: NextRequest) {
   // Step-up (N-15b): every role change, including making an admin, needs the caller password again and a reason.
   const su = await stepUp(db, req, admin, parsed.data, "/api/admin/users");
   if (!su.ok) return err(su.error, su.status);
-  const target = await db.prepare("SELECT role FROM users WHERE id=?").bind(id).first<{ role: string }>();
+  const target = await db.prepare("SELECT role,suspended_at FROM users WHERE id=?").bind(id).first<{ role: string; suspended_at: number | null }>();
   if (!target) return err("NOT_FOUND", 404);
-  if (target.role === "admin" && role !== "admin") {
+  // Demoting a suspended admin removes no active admin, so the guard only applies to active ones.
+  if (target.role === "admin" && target.suspended_at == null && role !== "admin") {
     const n = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE role='admin' AND suspended_at IS NULL").first<{ n: number }>();
     if ((n?.n ?? 0) <= 1) return err("LAST_ADMIN", 409);
   }

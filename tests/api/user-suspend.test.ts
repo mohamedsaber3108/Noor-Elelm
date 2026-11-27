@@ -95,6 +95,12 @@ describe("suspend and reactivate (N-18a)", () => {
     expect((await r.json()).error).toBe("LAST_ADMIN");
     expect(await count("SELECT COUNT(*) AS n FROM users WHERE id=?", a1.id)).toBe(1);
   });
+  it("a suspended admin can be demoted even when only one admin is active", async () => {
+    await signIn("admin");
+    const a2 = await seedUser("admin");
+    expect((await suspend(a2.id)).status).toBe(200);
+    expect((await put({ id: a2.id, role: "learner", ...STEP_UP })).status).toBe(200);
+  });
   it("non-admins get 403; cross-origin gets 403 BAD_ORIGIN", async () => {
     const t = await seedUser("learner");
     await signIn("reviewer");
