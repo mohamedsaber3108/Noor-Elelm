@@ -64,6 +64,13 @@
       "when": 1795732814109,
       "tag": "0008_session_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795745993273,
+      "tag": "0009_settings",
+      "breakpoints": true
     }
   ]
 }

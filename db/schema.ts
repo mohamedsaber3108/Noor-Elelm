@@ -47,6 +47,11 @@ export const userMfa = sqliteTable("user_mfa", {
 export const mfaRecoveryCodes = sqliteTable("mfa_recovery_codes", {
   id: text("id").primaryKey(), userId: text("user_id").notNull(), codeHash: text("code_hash").notNull(), usedAt: integer("used_at")
 }, t => [index("mfa_recovery_user_idx").on(t.userId)]);
+/** Admin settings (N-17). Keys come from the fixed registry in lib/settings.ts; value is a JSON string. */
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(), value: text("value").notNull(), updatedAt: integer("updated_at"), updatedBy: text("updated_by")
+});
+
 export const rateLimits = sqliteTable("rate_limits", {
   key: text("key").primaryKey(), count: integer("count").notNull().default(0), resetAt: integer("reset_at").notNull()
 });
