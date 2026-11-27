@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { sameOrigin } from "@/app/auth";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
-import { SESSION_COOKIE, currentSessionId, isSecureRequest, rotationStatements, sessionCookieOptions } from "@/app/auth";
+import { SESSION_COOKIE, currentSessionId, isHttps, rotationStatements, sessionCookieOptions } from "@/app/auth";
 import { RECOVERY_COUNT, decryptSecret, hashRecovery, newRecoveryCode } from "@/lib/mfa";
 import { verifyTotp } from "@/lib/totp";
 import { normalizeDigits } from "@/lib/digits";
@@ -55,6 +55,6 @@ export async function POST(req: NextRequest) {
   }
   if (!(await runAudited(db, async () => [...stmts, await auditStmt(g.user, g.ip, first ? "MFA_ENROLLED" : "MFA_VERIFIED")]))) return err(AUDIT_UNAVAILABLE, 503);
   const res = ok(first ? { enrolled: true, recoveryCodes: codes } : { enrolled: false });
-  res.cookies.set(SESSION_COOKIE, rot.token, sessionCookieOptions(isSecureRequest(req)));
+  res.cookies.set(SESSION_COOKIE, rot.token, sessionCookieOptions(isHttps(req)));
   return res;
 }
