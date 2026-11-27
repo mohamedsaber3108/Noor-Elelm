@@ -44,7 +44,7 @@ export function AdminAudit() {
   const set = (k: keyof Filters) => (e: { target: { value: string } }) => setDraft(d => ({ ...d, [k]: e.target.value }));
   const apply = (e: React.FormEvent) => { e.preventDefault(); setApplied(draft); setStack([{}]); };
 
-  const nav = <nav className="admin-nav"><Link href="/admin"><Bi ar="المراجعة" en="Review" /></Link> · <Link href="/admin/users"><Bi ar="المستخدمون" en="Users" /></Link> · <Link href="/admin/corrections"><Bi ar="البلاغات" en="Corrections" /></Link></nav>;
+  const nav = <nav className="admin-nav" aria-label="أقسام الإدارة"><Link href="/admin"><Bi ar="المراجعة" en="Review" /></Link> · <Link href="/admin/editorial"><Bi ar="لوحة التحرير" en="Editorial" /></Link> · <Link href="/admin/users"><Bi ar="المستخدمون" en="Users" /></Link> · <Link href="/admin/corrections"><Bi ar="البلاغات" en="Corrections" /></Link> · <Link href="/admin/settings"><Bi ar="الإعدادات" en="Settings" /></Link></nav>;
   if (state === 'denied') return <main className="page-main"><div className="page-hero"><h1><Bi ar="سجل التدقيق" en="Audit log" /></h1></div><div className="empty-state"><Bi ar="هذه الصفحة للمديرين فقط." en="This page is for admins only." /> <Link href="/login?return_to=%2Fadmin%2Faudit"><Bi ar="تسجيل الدخول" en="Sign in" /></Link></div></main>;
 
   const text = (ar: string, en: string, role: 'status' | 'alert' = 'status') => <p role={role}><Bi ar={ar} en={en} /></p>;

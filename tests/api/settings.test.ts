@@ -154,7 +154,7 @@ describe("PUT /api/admin/settings", () => {
     const bad: [string, unknown][] = [
       ["feature.game_enabled", "false"], ["feature.game_enabled", 1], ["site.pricing_note_en", true], ["site.pricing_note_en", ""], ["site.pricing_note_en", "   "],
       ["site.pricing_note_en", "x".repeat(501)], ["site.pricing_note_en", "<script>alert(1)</script>"], ["site.pricing_note_ar", "a<b"], ["site.pricing_note_en", "a\u0000b"],
-      ["site.pricing_note_en", "abc\u202Edef"], ["site.pricing_note_ar", "\u200Fنص"], ["site.registration_note_en", "a\u2066b\u2069"],
+      ["site.pricing_note_en", "abc\u202Edef"], ["site.pricing_note_ar", "\u200Fنص"], ["site.registration_note_en", "a\u2066b\u2069"], ["site.pricing_note_ar", "نص\u061Cآخر"],
     ];
     for (const [k, v] of bad) expect((await set(k, v)).status).toBe(400);
     expect(await count("SELECT COUNT(*) AS n FROM settings")).toBe(0);

@@ -15,7 +15,7 @@ import { AUDIT_UNAVAILABLE, auditStatement, runAudited } from "@/lib/audit";
 const plain = z.string().trim().min(1).max(500)
   .refine((s) => !/[<>]/.test(s), "NO_TAGS")
   .refine((s) => !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(s), "NO_CONTROL")
-  .refine((s) => !/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/.test(s), "NO_BIDI_CONTROL");
+  .refine((s) => !/[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/.test(s), "NO_BIDI_CONTROL");
 
 export const PRICING_NOTE_AR = "الخطط المدفوعة غير معروضة حاليًا. المعرفة الأساسية متاحة مجانًا حاليًا، ولا يوجد بيع أو دفع الآن.";
 export const PRICING_NOTE_EN = "Not available yet. Basic knowledge is free for now.";
