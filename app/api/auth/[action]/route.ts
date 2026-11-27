@@ -16,12 +16,13 @@ const DUMMY_HASH = "pbkdf2$100000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAA
 const err = (error: string, status: number) => NextResponse.json({ error }, { status });
 const isSecure = isHttps;
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
   if ((await ctx.params).action !== "session") return err("NOT_FOUND", 404);
-  const u = await getCurrentUser({ allowUnverified: true });
+  // ?peek=1 reads without counting as use (the header timer asks this way, so it never keeps a staff session alive).
+  const u = await getCurrentUser({ allowUnverified: true, touch: new URL(req.url).searchParams.get("peek") !== "1" });
   // `mfa` tells the page that a staff session must finish MFA first; nothing else works until then.
   const mfa = u && isStaff(u) && !u.mfaVerified ? "required" : undefined;
-  return NextResponse.json({ user: u ? { name: u.displayName, email: u.email, reviewer: isReviewer(u), emailVerified: u.emailVerified, ...(mfa ? { mfa } : {}) } : null, registrationOpen: registrationMode() !== "closed" }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ user: u ? { name: u.displayName, email: u.email, reviewer: isReviewer(u), emailVerified: u.emailVerified, staffExpiresInSeconds: u.staffExpiresInSeconds, staffEndsBy: u.staffEndsBy, ...(mfa ? { mfa } : {}) } : null, registrationOpen: registrationMode() !== "closed" }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ action: string }> }) {

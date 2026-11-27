@@ -11,6 +11,8 @@ beforeEach(() => {
   delete (env as unknown as Record<string, unknown>).REGISTRATION_MODE;
   delete (env as unknown as Record<string, unknown>).REGISTRATION_ALLOWLIST;
   delete (env as unknown as Record<string, unknown>).MFA_SECRET_KEY;
+  delete (env as unknown as Record<string, unknown>).STAFF_IDLE_MINUTES;
+  delete (env as unknown as Record<string, unknown>).STAFF_ABSOLUTE_HOURS;
   for (const k of ["MAIL_PROVIDER", "MAIL_FROM", "MAIL_LINK_BASE"]) delete (env as unknown as Record<string, unknown>)[k];
   setTestOutbox(null);
   clearCookies();

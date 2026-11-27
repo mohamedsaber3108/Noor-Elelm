@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { sameOrigin } from "@/app/auth";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
-import { currentSessionId } from "@/app/auth";
+import { SESSION_COOKIE, currentSessionId, isSecureRequest, rotationStatements, sessionCookieOptions } from "@/app/auth";
 import { RECOVERY_COUNT, decryptSecret, hashRecovery, newRecoveryCode } from "@/lib/mfa";
 import { verifyTotp } from "@/lib/totp";
 import { normalizeDigits } from "@/lib/digits";
@@ -38,9 +38,11 @@ export async function POST(req: NextRequest) {
   if (moved.meta.changes !== 1) return fail("replay");
   const sid = await currentSessionId();
   const first = row.enabled_at == null;
+  // Step-up: a new session row replaces the old one (N-11), so a session id seen before MFA is dead afterwards.
+  const rot = await rotationStatements(sid, uid, req.headers.get("user-agent"), now);
   const stmts = [
     db.prepare("UPDATE user_mfa SET enabled_at=COALESCE(enabled_at,?) WHERE user_id=?").bind(now, uid),
-    db.prepare("UPDATE sessions SET mfa_verified_at=? WHERE id=?").bind(now, sid),
+    ...rot.stmts,
   ];
   const codes: string[] = [];
   if (first) {
@@ -52,5 +54,7 @@ export async function POST(req: NextRequest) {
     }
   }
   if (!(await runAudited(db, async () => [...stmts, await auditStmt(g.user, g.ip, first ? "MFA_ENROLLED" : "MFA_VERIFIED")]))) return err(AUDIT_UNAVAILABLE, 503);
-  return ok(first ? { enrolled: true, recoveryCodes: codes } : { enrolled: false });
+  const res = ok(first ? { enrolled: true, recoveryCodes: codes } : { enrolled: false });
+  res.cookies.set(SESSION_COOKIE, rot.token, sessionCookieOptions(isSecureRequest(req)));
+  return res;
 }

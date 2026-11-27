@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { sameOrigin } from "@/app/auth";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
-import { currentSessionId } from "@/app/auth";
+import { SESSION_COOKIE, currentSessionId, isSecureRequest, rotationStatements, sessionCookieOptions } from "@/app/auth";
 import { matchesRecovery } from "@/lib/mfa";
 import { BAD_CODE, auditStmt, err, mfaGuard, ok, triesAllowed } from "@/lib/mfa-routes";
 import { AUDIT_UNAVAILABLE, runAudited } from "@/lib/audit";
@@ -31,10 +31,13 @@ export async function POST(req: NextRequest) {
   const spent = await db.prepare("UPDATE mfa_recovery_codes SET used_at=? WHERE id=? AND used_at IS NULL").bind(now, hit).run();
   if (spent.meta.changes !== 1) return fail();
   const sid = await currentSessionId();
+  const rot = await rotationStatements(sid, uid, req.headers.get("user-agent"), now); // step-up: new session id (N-11)
   const done = await runAudited(db, async () => [
-    db.prepare("UPDATE sessions SET mfa_verified_at=? WHERE id=?").bind(now, sid),
+    ...rot.stmts,
     await auditStmt(g.user, g.ip, "MFA_RECOVERY_USED", { remaining: rows.length - 1 }),
   ]);
   if (!done) return err(AUDIT_UNAVAILABLE, 503);
-  return ok({ remaining: rows.length - 1 });
+  const res = ok({ remaining: rows.length - 1 });
+  res.cookies.set(SESSION_COOKIE, rot.token, sessionCookieOptions(isSecureRequest(req)));
+  return res;
 }

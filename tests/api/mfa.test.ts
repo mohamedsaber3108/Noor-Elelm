@@ -24,12 +24,14 @@ import { PASSWORD, authCtx, call, count, db, seedUser, setEnv, signIn, signInUnv
 const useKey = () => setEnv("MFA_SECRET_KEY", crypto.randomUUID() + crypto.randomUUID());
 const post = (h: (r: never) => Promise<Response>, body: unknown, o = {}) => h(call("POST", "/api/auth/mfa/x", body, o) as never);
 const codeFor = async (secretText: string, offset = 0) => totpAt(base32Decode(secretText), stepAt(Date.now()) + offset);
+// MFA verify and recovery rotate the session id (N-11): the browser keeps the new cookie from the response.
+const adopt = <T extends Response>(r: T) => { const c = (r as unknown as { cookies: { get: (n: string) => { value: string } | undefined } }).cookies.get(SESSION_COOKIE); if (c) setCookie(SESSION_COOKIE, c.value); return r; };
 const freshSession = async (userId: string) => setCookie(SESSION_COOKIE, await createSession(userId, "vitest"));
 
 /** Enrols the signed-in (unverified) staff user and returns the secret and recovery codes. */
 async function enrolNow() {
   const e = await (await post(enroll, undefined)).json();
-  const v = await post(verify, { code: await codeFor(e.secret) });
+  const v = adopt(await post(verify, { code: await codeFor(e.secret) }));
   expect(v.status).toBe(200);
   return { secret: e.secret as string, recoveryCodes: (await v.json()).recoveryCodes as string[] };
 }
@@ -156,7 +158,7 @@ describe("enrol, verify, recover", () => {
     expect(e.otpauth).toContain(`secret=${e.secret}`);
     expect((await db().prepare("SELECT secret_enc FROM user_mfa WHERE user_id=?").bind(u.id).first<{ secret_enc: string }>())!.secret_enc).not.toContain(e.secret);
     expect((await usersGet(call("GET", "/api/admin/users") as never)).status).toBe(403);
-    const v = await (await post(verify, { code: await codeFor(e.secret) })).json();
+    const v = await (adopt(await post(verify, { code: await codeFor(e.secret) }))).json();
     expect(v.recoveryCodes).toHaveLength(10);
     expect((await usersGet(call("GET", "/api/admin/users") as never)).status).toBe(200);
     expect(await count("SELECT COUNT(*) AS n FROM mfa_recovery_codes WHERE user_id=?", u.id)).toBe(10);
@@ -174,7 +176,7 @@ describe("enrol, verify, recover", () => {
     expect((await usersGet(call("GET", "/api/admin/users") as never)).status).toBe(403);
     await db().prepare("DROP TRIGGER test_audit_down").run();
     // The first code is spent (replay guard), so the retry uses the next time step.
-    const ok = await post(verify, { code: await codeFor(e.secret, 1) });
+    const ok = adopt(await post(verify, { code: await codeFor(e.secret, 1) }));
     expect(ok.status).toBe(200);
     expect((await ok.json()).recoveryCodes).toHaveLength(10);
     expect((await db().prepare("SELECT enabled_at FROM user_mfa WHERE user_id=?").bind(u.id).first<{ enabled_at: number | null }>())!.enabled_at).not.toBeNull();
@@ -256,7 +258,7 @@ describe("enrol, verify, recover", () => {
     await freshSession(u.id);
     expect((await corrGet()).status).toBe(403);
     const later = await codeFor(secret, 1);
-    expect((await post(verify, { code: later })).status).toBe(200);
+    expect(adopt(await post(verify, { code: later })).status).toBe(200);
     expect((await corrGet()).status).toBe(200);
     await freshSession(u.id);
     expect((await post(verify, { code: later })).status).toBe(401);
@@ -279,7 +281,7 @@ describe("enrol, verify, recover", () => {
     const { recoveryCodes } = await enrolNow();
     await freshSession(u.id);
     expect((await corrGet()).status).toBe(403);
-    expect((await post(recover, { code: recoveryCodes[0].toLowerCase() })).status).toBe(200);
+    expect(adopt(await post(recover, { code: recoveryCodes[0].toLowerCase() })).status).toBe(200);
     expect((await corrGet()).status).toBe(200);
     await freshSession(u.id);
     const again = await post(recover, { code: recoveryCodes[0] });

@@ -1,10 +1,28 @@
 import { cookies } from "next/headers";
 import { env } from "cloudflare:workers";
 
-export type AppUser = { userId: string; email: string; displayName: string; fullName: string | null; role: string; mfaVerified: boolean; emailVerified: boolean };
+export type AppUser = {
+  userId: string; email: string; displayName: string; fullName: string | null; role: string; mfaVerified: boolean; emailVerified: boolean;
+  /** Seconds until a verified staff session ends (idle or absolute limit, whichever is first). null for learners and unverified sessions. */
+  staffExpiresInSeconds: number | null;
+  /** Which limit ends the session first: "idle" (use extends it) or "absolute" (nothing extends it). null when staffExpiresInSeconds is null. */
+  staffEndsBy: "idle" | "absolute" | null;
+};
 
 export const SESSION_COOKIE = "nai_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** Staff session limits (N-11). Env STAFF_IDLE_MINUTES / STAFF_ABSOLUTE_HOURS override; a bad value falls back to the default. */
+export const STAFF_IDLE_MINUTES = 30;
+export const STAFF_ABSOLUTE_HOURS = 8;
+/** last_seen_at is written at most once per this many ms. */
+const LAST_SEEN_WRITE_MS = 60_000;
+/** Allowed ranges: idle 5 to 240 minutes, absolute 1 to 24 hours. Out-of-range or bad values use the default. */
+const bounded = (v: unknown, fallback: number, min: number, max: number) => { const s = String(v ?? "").trim(); const n = Number(s); return s !== "" && Number.isFinite(n) && n >= min && n <= max ? n : fallback; };
+export function staffLimitsMs() {
+  const e = env as unknown as Record<string, unknown>;
+  return { idle: bounded(e.STAFF_IDLE_MINUTES, STAFF_IDLE_MINUTES, 5, 240) * 60_000, absolute: bounded(e.STAFF_ABSOLUTE_HOURS, STAFF_ABSOLUTE_HOURS, 1, 24) * 3_600_000 };
+}
+
 const PBKDF2_ITERATIONS = 100_000; // Workers WebCrypto maximum
 const enc = new TextEncoder();
 
@@ -52,6 +70,23 @@ export async function createSession(userId: string, userAgent: string | null, op
   return token;
 }
 
+/**
+ * Statements that replace a session after a privilege step-up (MFA verify or recovery): a NEW verified row and the old row deleted.
+ * Run them inside the audited batch; the caller sets the returned token as the cookie.
+ */
+export async function rotationStatements(oldId: string | null, userId: string, userAgent: string | null, now = Date.now()) {
+  const token = b64(crypto.getRandomValues(new Uint8Array(32))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const db = env.DB!;
+  const stmts = [
+    db.prepare("INSERT INTO sessions(id,user_id,expires_at,user_agent,mfa_verified_at,last_seen_at) VALUES(?,?,?,?,?,?)")
+      .bind(await sha256Hex(token), userId, now + SESSION_TTL_MS, userAgent?.slice(0, 200) ?? null, now, now),
+    db.prepare("DELETE FROM sessions WHERE id=?").bind(oldId),
+  ];
+  return { token, stmts };
+}
+
+export const isSecureRequest = (req: Request) => new URL(req.url).protocol === "https:" || req.headers.get("x-forwarded-proto") === "https";
+
 export async function destroySession(token: string) {
   await env.DB!.prepare("DELETE FROM sessions WHERE id=?").bind(await sha256Hex(token)).run();
 }
@@ -66,15 +101,32 @@ export async function currentSessionId(): Promise<string | null> {
  * The signed-in user. Staff (reviewer, admin, REVIEWER_IDS) whose session is not MFA-verified count as signed out,
  * so every route refuses them. Only the MFA routes and the session probe pass `allowUnverified`.
  */
-export async function getCurrentUser(opts: { allowUnverified?: boolean } = {}): Promise<AppUser | null> {
+export async function getCurrentUser(opts: { allowUnverified?: boolean; touch?: boolean } = {}): Promise<AppUser | null> {
   if (!env.DB) return null;
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token || token.length > 128) return null;
+  const now = Date.now(), sid = await sha256Hex(token);
   const row = await env.DB.prepare(
-    "SELECT u.id,u.email,u.display_name,u.role,u.email_verified_at,s.mfa_verified_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires_at>?",
-  ).bind(await sha256Hex(token), Date.now()).first<{ id: string; email: string; display_name: string; role: string; email_verified_at: number | null; mfa_verified_at: number | null }>();
+    "SELECT u.id,u.email,u.display_name,u.role,u.email_verified_at,s.mfa_verified_at,s.last_seen_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires_at>?",
+  ).bind(sid, now).first<{ id: string; email: string; display_name: string; role: string; email_verified_at: number | null; mfa_verified_at: number | null; last_seen_at: number | null }>();
   if (!row) return null;
-  const user: AppUser = { userId: row.id, email: row.email, displayName: row.display_name, fullName: row.display_name, role: row.role, mfaVerified: row.mfa_verified_at != null, emailVerified: row.email_verified_at != null };
+  const user: AppUser = { userId: row.id, email: row.email, displayName: row.display_name, fullName: row.display_name, role: row.role, mfaVerified: row.mfa_verified_at != null, emailVerified: row.email_verified_at != null, staffExpiresInSeconds: null, staffEndsBy: null };
+  // Staff idle and absolute limits (N-11). Learners keep the 30-day life. An unverified staff session is not "in use" yet.
+  if (isStaff(user) && row.mfa_verified_at != null) {
+    const { idle, absolute } = staffLimitsMs();
+    let lastSeen = row.last_seen_at ?? row.mfa_verified_at;
+    if (now - lastSeen > idle || now - row.mfa_verified_at > absolute) {
+      await env.DB.prepare("DELETE FROM sessions WHERE id=?").bind(sid).run();
+      return null;
+    }
+    if (opts.touch !== false && now - lastSeen > LAST_SEEN_WRITE_MS) {
+      await env.DB.prepare("UPDATE sessions SET last_seen_at=? WHERE id=?").bind(now, sid).run();
+      lastSeen = now;
+    }
+    const idleLeft = lastSeen + idle - now, absLeft = row.mfa_verified_at + absolute - now;
+    user.staffExpiresInSeconds = Math.max(0, Math.floor(Math.min(idleLeft, absLeft) / 1000));
+    user.staffEndsBy = absLeft < idleLeft ? "absolute" : "idle";
+  }
   if (isStaff(user) && !user.mfaVerified && !opts.allowUnverified) return null;
   return user;
 }
