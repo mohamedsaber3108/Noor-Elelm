@@ -360,7 +360,8 @@ const routeSources = (import.meta as unknown as Glob).glob("/app/api/**/route.ts
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 // Routes that are open on purpose or that take part in the MFA step itself.
 // The archive is a public index by design; the draft text inside it is what MFA protects (tested on its own below).
-const skipRoute = (f: string) => f.endsWith("/health/route.ts") || f.endsWith("/archive/route.ts") || f.includes("/auth/");
+// /api/settings is the public settings read (site.* and feature.* only, N-17); it is open on purpose and tested on its own.
+const skipRoute = (f: string) => f.endsWith("/health/route.ts") || f.endsWith("/archive/route.ts") || f.endsWith("/app/api/settings/route.ts") || f.includes("/auth/");
 
 describe("every staff-gated route refuses an unverified staff session", () => {
   it("finds the routes (guards the glob itself)", () => {
