@@ -14,7 +14,7 @@ const errorText: Record<string, string> = {
   REQUEST_CLOSED: 'هذا الطلب أُغلق أو انتهت مدته.',
   NOT_FOUND: 'الطلب غير موجود.',
 };
-const time = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace('T', ' ');
+const time = (ms: number) => new Date(ms).toLocaleString('ar-EG', { timeZone: 'UTC', dateStyle: 'short', timeStyle: 'short' });
 
 /** Open admin promotion requests (N-15c). A different admin approves or rejects with password and reason. */
 export function AdminRequests({ refresh, onDecided }: { refresh: number; onDecided: () => void }) {
@@ -55,11 +55,11 @@ export function AdminRequests({ refresh, onDecided }: { refresh: number; onDecid
     <h2 id="req-title" tabIndex={-1}>طلبات الترقية إلى مدير</h2>
     {msg && <p role="status">{msg}</p>}
     {rows.length === 0 ? <p>لا طلبات معلّقة.</p> : <ul>{rows.map(r => <li key={r.id}>
-      <p><bdi>{r.target_name || r.target_email || r.target_id}</bdi> · طلبه: <bdi>{r.requested_by_name || r.requested_by}</bdi> · ينتهي: <bdi dir="ltr">{time(r.expires_at)} UTC</bdi></p>
+      <p><bdi>{r.target_name || r.target_email || r.target_id}</bdi> · طلبه: <bdi>{r.requested_by_name || r.requested_by}</bdi> · ينتهي: <bdi>{time(r.expires_at)}</bdi> (بتوقيت UTC)</p>
       <p>السبب: <bdi>{r.reason}</bdi></p>
       {r.requested_by === me ? <p>بانتظار موافقة مدير آخر.</p> : <p>
-        <button ref={el => { buttons.current[r.id] = el; }} className="btn-primary" onClick={() => { setOpen({ id: r.id, decision: 'APPROVE', name: r.target_name || r.target_id }); setMsg(''); }}>موافقة</button>{' '}
-        <button className="btn-outline" onClick={() => { setOpen({ id: r.id, decision: 'REJECT', name: r.target_name || r.target_id }); setMsg(''); }}>رفض</button>
+        <button ref={el => { buttons.current[r.id] = el; }} className="btn-primary" aria-label={'موافقة على ترقية ' + (r.target_name || r.target_email || r.target_id)} onClick={() => { setOpen({ id: r.id, decision: 'APPROVE', name: r.target_name || r.target_id }); setMsg(''); }}>موافقة</button>{' '}
+        <button className="btn-outline" aria-label={'رفض ترقية ' + (r.target_name || r.target_email || r.target_id)} onClick={() => { setOpen({ id: r.id, decision: 'REJECT', name: r.target_name || r.target_id }); setMsg(''); }}>رفض</button>
       </p>}
     </li>)}</ul>}
     {open && <form aria-labelledby="req-form-title" onSubmit={submit} onKeyDown={e => { if (e.key === 'Escape') close(open.id); }}>
