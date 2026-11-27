@@ -9,7 +9,7 @@ const labels: [string, string][] = [
   ['quizAttempts', 'إجابات'], ['quizCorrect', 'إجابات صحيحة'], ['coinsIssued', 'نقاط ممنوحة'], ['bookmarks', 'مفضلات'],
   ['correctionReports', 'بلاغات تصحيح'], ['importedDrafts', 'مسودات مستوردة'], ['reviews', 'قرارات مراجعة'],
 ];
-const roleNames: Record<string, string> = { learner: 'متعلّم', researcher: 'باحث', fact_checker: 'مدقق حقائق', language_editor: 'محرر لغوي', scholar: 'مراجع علمي', publisher: 'ناشر', reviewer: 'مراجع', admin: 'مدير' };
+const roleNames: Record<string, string> = { learner: 'متعلّم', researcher: 'باحث', fact_checker: 'مدقق حقائق', language_editor: 'محرر لغوي', scholar: 'عالِم', publisher: 'ناشر', reviewer: 'مراجع', admin: 'مدير' };
 
 export function AdminUsers() {
   const [data, setData] = useState<Data | null>(null), [state, setState] = useState<'loading' | 'denied' | 'ok' | 'error'>('loading');

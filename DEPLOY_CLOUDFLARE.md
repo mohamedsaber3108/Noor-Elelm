@@ -31,6 +31,15 @@ The app is a Vinext (Next-compatible) build that runs on Cloudflare Workers with
    After that, manage roles at `/admin/users`.
 9. Domain: add the domain to Cloudflare (DNS), then Workers & Pages > your worker > Settings > Domains & Routes > Add Custom Domain. HTTPS certificates are issued automatically.
 
+## Moving from REVIEWER_IDS to database roles (once, before deploying the N-15a release)
+From this release only `users.role` makes someone staff. `REVIEWER_IDS` grants nothing.
+1. Back up first (see Backups below).
+2. List the user ids that are in `REVIEWER_IDS` today (Workers & Pages > your worker > Settings > Variables and Secrets; a secret cannot be read back, so use your own record of it).
+3. Check each id: `npx wrangler d1 execute noor-al-ilm-prod --remote --command "SELECT id,email,role FROM users WHERE id IN ('<id1>','<id2>')"`.
+4. For each person: `npx wrangler d1 execute noor-al-ilm-prod --remote --command "UPDATE users SET role='<role>' WHERE id='<id>'"`. `<role>` is one of `researcher`, `fact_checker`, `language_editor`, `scholar`, `publisher`, `reviewer` (`lib/rbac.ts`). If unsure, use `reviewer`: it keeps the access they have today.
+5. Deploy. Then check that an admin can still sign in, pass `/mfa` and open `/admin/users`, and that each moved person can open `/admin`.
+6. Remove the `REVIEWER_IDS` variable on the same Settings page.
+
 ## Variables
 
 | Name | Where | Purpose |

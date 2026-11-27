@@ -10,7 +10,7 @@ const errors: Record<string, string> = {
   RATE_LIMITED: 'محاولات كثيرة. انتظر قليلًا.',
   LAST_ADMIN: 'لا يمكن حذف آخر مدير للنظام.',
 };
-const roleNames: Record<string, string> = { learner: 'متعلّم', researcher: 'باحث', fact_checker: 'مدقق حقائق', language_editor: 'محرر لغوي', scholar: 'مراجع علمي', publisher: 'ناشر', reviewer: 'مراجع', admin: 'مدير' };
+const roleNames: Record<string, string> = { learner: 'متعلّم', researcher: 'باحث', fact_checker: 'مدقق حقائق', language_editor: 'محرر لغوي', scholar: 'عالِم', publisher: 'ناشر', reviewer: 'مراجع', admin: 'مدير' };
 
 async function call(method: string, body: unknown) {
   const r = await fetch('/api/account', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

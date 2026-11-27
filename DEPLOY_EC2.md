@@ -95,6 +95,17 @@ Example line: `--var REGISTRATION_MODE:allowlist --var REGISTRATION_ALLOWLIST:<c
 
 **Restore a backup:** `sudo systemctl stop noor-al-ilm`. Then `gunzip -c <backup>-d1-*.sqlite.gz | sudo tee /var/lib/noor-al-ilm/state/v3/d1/miniflare-D1DatabaseObject/<same-hash>.sqlite >/dev/null`, delete the `-wal`/`-shm` files next to it, and run `sudo chown -R noor:noor /var/lib/noor-al-ilm` and `sudo systemctl start noor-al-ilm`. Also copy backups off the server, for example with an S3 sync or EBS snapshots.
 
+## Moving from REVIEWER_IDS to database roles (once, before deploying the N-15a release)
+From this release only `users.role` makes someone staff. `REVIEWER_IDS` grants nothing.
+1. Take an EBS snapshot and run `sudo noor-backup pre-roles`.
+2. List the user ids in `REVIEWER_IDS` where the host sets it (the service environment or `.dev.vars`). Write them down.
+3. `sudo systemctl stop noor-al-ilm`, then open the database with `sudo sqlite3 <file>.sqlite` (the file named in "Lost device, step 3" below).
+4. Check each id: `SELECT id,email,role FROM users WHERE id IN ('<id1>','<id2>');`
+5. For each person: `UPDATE users SET role='<role>' WHERE id='<id>';` `<role>` is one of `researcher`, `fact_checker`, `language_editor`, `scholar`, `publisher`, `reviewer` (`lib/rbac.ts`). If unsure, use `reviewer`: it keeps the access they have today.
+6. `sudo chown -R noor:noor /var/lib/noor-al-ilm` and `sudo systemctl start noor-al-ilm`.
+7. Deploy the release (`sudo noor-deploy <commit>`). Then check that an admin can still sign in, pass `/mfa` and open `/admin/users`, and that each moved person can open `/admin`.
+8. Take `REVIEWER_IDS` out of the host settings and restart the service.
+
 ## Staff two-step sign-in (MFA)
 
 Staff (every role in `lib/rbac.ts` except `learner`) must pass a 6-digit authenticator code (or a recovery code) after the password. Learners are not affected.
