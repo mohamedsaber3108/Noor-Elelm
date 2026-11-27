@@ -37,3 +37,10 @@ export async function auditLoginFailed(req: Request, accountId: string, role: st
     await write(accountId, role, "LOGIN_FAILED", accountId, "failed", clientIp(req));
   } catch { /* the 401 must still be answered as it was */ }
 }
+
+/** STEP_UP_FAILED: wrong password at a step-up prompt (N-15b). Target = "METHOD route". The typed password is never read here. */
+export async function auditStepUpFailed(req: Request, user: { userId: string; role: string }, route: string): Promise<void> {
+  try {
+    await write(user.userId, user.role, "STEP_UP_FAILED", `${req.method} ${route}`, "failed", clientIp(req));
+  } catch { /* the refusal must still be answered as it was */ }
+}

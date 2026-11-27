@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { env } from "cloudflare:workers";
 import { DELETE, GET, PUT } from "@/app/api/admin/users/route";
-import { setEnv, call, count, db, seedUser, signIn, EVIL } from "../helpers";
+import { setEnv, call, count, db, seedUser, signIn, EVIL, STEP_UP } from "../helpers";
 
 const put = (body: unknown, o = {}) => PUT(call("PUT", "/api/admin/users", body, o));
 const del = (body: unknown, o = {}) => DELETE(call("DELETE", "/api/admin/users", body, o));
@@ -66,7 +66,7 @@ describe("PUT /api/admin/users (change role)", () => {
   it("changes the role and writes a ROLE_CHANGED audit row with from and to", async () => {
     const admin = await signIn("admin");
     const t = await seedUser("learner");
-    const res = await put({ id: t.id, role: "reviewer" });
+    const res = await put({ id: t.id, role: "reviewer", ...STEP_UP });
     expect(res.status).toBe(200);
     expect((await db().prepare("SELECT role FROM users WHERE id=?").bind(t.id).first<{ role: string }>())?.role).toBe("reviewer");
     const a = await db().prepare("SELECT actor_id,target_id,detail_json FROM audit_events WHERE action='ROLE_CHANGED'").first<{ actor_id: string; target_id: string; detail_json: string }>();
@@ -75,7 +75,7 @@ describe("PUT /api/admin/users (change role)", () => {
   });
   it("last-admin guard: demoting the only admin returns 409 LAST_ADMIN and changes nothing", async () => {
     const admin = await signIn("admin");
-    const res = await put({ id: admin.id, role: "learner" });
+    const res = await put({ id: admin.id, role: "learner", ...STEP_UP });
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe("LAST_ADMIN");
     expect((await db().prepare("SELECT role FROM users WHERE id=?").bind(admin.id).first<{ role: string }>())?.role).toBe("admin");
@@ -84,11 +84,11 @@ describe("PUT /api/admin/users (change role)", () => {
   it("allows demoting an admin when another admin exists", async () => {
     const admin = await signIn("admin");
     await seedUser("admin");
-    expect((await put({ id: admin.id, role: "learner" })).status).toBe(200);
+    expect((await put({ id: admin.id, role: "learner", ...STEP_UP })).status).toBe(200);
   });
   it("returns 404 for an unknown user and 400 for a bad role or missing fields", async () => {
     await signIn("admin");
-    expect((await put({ id: "nope", role: "learner" })).status).toBe(404);
+    expect((await put({ id: "nope", role: "learner", ...STEP_UP })).status).toBe(404);
     expect((await put({ id: "nope", role: "superuser" })).status).toBe(400);
     expect((await put({})).status).toBe(400);
     expect((await PUT(call("PUT", "/api/admin/users", "{bad"))).status).toBe(400);

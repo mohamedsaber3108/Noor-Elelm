@@ -5,6 +5,7 @@ import { clientIp, getCurrentUser, isAdmin, sameOrigin } from "@/app/auth";
 import { AUDIT_UNAVAILABLE, auditStatement, runAudited } from "@/lib/audit";
 import { auditAdminDenied } from "@/lib/audit-denied";
 import { ROLES } from "@/lib/rbac";
+import { stepUp } from "@/lib/step-up";
 
 const err = (error: string, status: number) => NextResponse.json({ error }, { status });
 const PAGE = 25;
@@ -58,11 +59,11 @@ export async function GET(req: NextRequest) {
 }
 
 const putSchema = z.union([
-  z.object({ id: z.string().min(1).max(64), role: z.enum(ROLES) }),
+  z.object({ id: z.string().min(1).max(64), role: z.enum(ROLES), password: z.string().max(200).optional(), reason: z.string().max(1000).optional() }),
   z.object({ id: z.string().min(1).max(64), resetMfa: z.literal(true) }),
 ]);
 
-/** PUT {id, role} changes a user's role. PUT {id, resetMfa:true} clears another user's MFA (lost device); the admin needs their own verified MFA session. */
+/** PUT {id, role, password, reason} changes a user's role after step-up (lib/step-up.ts). PUT {id, resetMfa:true} clears another user's MFA (lost device); the admin needs their own verified MFA session. */
 export async function PUT(req: NextRequest) {
   const admin = await adminOnly();
   if (!admin) { await auditAdminDenied(req, "/api/admin/users"); return err("ADMIN_ACCESS_REQUIRED", 403); }
@@ -87,6 +88,9 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
   const { role } = parsed.data;
+  // Step-up (N-15b): every role change, including making an admin, needs the caller password again and a reason.
+  const su = await stepUp(db, req, admin, parsed.data, "/api/admin/users");
+  if (!su.ok) return err(su.error, su.status);
   const target = await db.prepare("SELECT role FROM users WHERE id=?").bind(id).first<{ role: string }>();
   if (!target) return err("NOT_FOUND", 404);
   if (target.role === "admin" && role !== "admin") {
@@ -95,7 +99,7 @@ export async function PUT(req: NextRequest) {
   }
   const done = await runAudited(db, async () => [
     db.prepare("UPDATE users SET role=? WHERE id=?").bind(role, id),
-    await auditStatement(db, { actorId: admin.userId, actorRole: admin.role, action: "ROLE_CHANGED", targetId: id, detail: { from: target.role, to: role }, source: clientIp(req) }),
+    await auditStatement(db, { actorId: admin.userId, actorRole: admin.role, action: "ROLE_CHANGED", targetId: id, detail: { from: target.role, to: role }, source: clientIp(req), reason: su.reason }),
   ]);
   if (!done) return err(AUDIT_UNAVAILABLE, 503);
   return NextResponse.json({ ok: true });

@@ -4,6 +4,8 @@ import { SESSION_COOKIE, createSession, hashPassword } from "@/app/auth";
 import { setCookie } from "./mocks/next-headers";
 
 export const PASSWORD = "correct-horse-battery";
+/** Password and reason for admin actions that need step-up (N-15b). */
+export const STEP_UP = { password: PASSWORD, reason: "Owner asked for this change." };
 let hashed: Promise<string> | undefined;
 
 type Role = "learner" | "researcher" | "fact_checker" | "language_editor" | "scholar" | "publisher" | "reviewer" | "admin";
