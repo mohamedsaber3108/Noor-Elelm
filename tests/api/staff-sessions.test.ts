@@ -5,7 +5,7 @@ import { GET as meGet } from "@/app/api/me/route";
 import { POST as enroll } from "@/app/api/auth/mfa/enroll/route";
 import { POST as verify } from "@/app/api/auth/mfa/verify/route";
 import { POST as recover } from "@/app/api/auth/mfa/recover/route";
-import { SESSION_COOKIE, createSession, staffLimitsMs } from "@/app/auth";
+import { SESSION_COOKIE, createSession, isHttps, staffLimitsMs } from "@/app/auth";
 import { base32Decode, stepAt, totpAt } from "@/lib/totp";
 import { setCookie } from "../mocks/next-headers";
 import { authCtx, call, count, db, seedUser, setEnv, signIn, signInUnverified } from "../helpers";
@@ -181,6 +181,26 @@ describe("session id rotation after MFA", () => {
     setCookie(SESSION_COOKIE, fresh!);
     expect((await corrGet()).status).toBe(200);
     expect(await count("SELECT COUNT(*) AS n FROM audit_events WHERE action='MFA_RECOVERY_USED' AND actor_id=?", u.id)).toBe(1);
+  });
+  it.each([
+    [undefined, false],
+    ["https", true],
+    ["https, http", true],
+    ["http, https", false],
+  ])("rotated cookie Secure flag follows isHttps for x-forwarded-proto=%s -> %s", async (proto, secure) => {
+    const headers: Record<string, string> = proto ? { "x-forwarded-proto": proto } : {};
+    expect(isHttps(call("POST", "/api/auth/mfa/x", {}, { headers }) as never)).toBe(secure);
+    const flag = (r: Response) => (r as unknown as { cookies: { get: (n: string) => { secure?: boolean } | undefined } }).cookies.get(SESSION_COOKIE)?.secure === true;
+    const u = await signInUnverified("admin");
+    const e = await (await post(enroll, undefined)).json();
+    const v = await verify(call("POST", "/api/auth/mfa/verify", { code: await codeFor(e.secret) }, { headers }) as never);
+    expect(v.status).toBe(200);
+    expect(flag(v)).toBe(secure);
+    const codes = (await v.json()).recoveryCodes as string[];
+    setCookie(SESSION_COOKIE, await createSession(u.id, "vitest"));
+    const r = await recover(call("POST", "/api/auth/mfa/recover", { code: codes[0] }, { headers }) as never);
+    expect(r.status).toBe(200);
+    expect(flag(r)).toBe(secure);
   });
   it("verify again on an already verified session: a new cookie, the old one dead, still one row", async () => {
     const u = await signInUnverified("admin");

@@ -85,8 +85,6 @@ export async function rotationStatements(oldId: string | null, userId: string, u
   return { token, stmts };
 }
 
-export const isSecureRequest = (req: Request) => new URL(req.url).protocol === "https:" || req.headers.get("x-forwarded-proto") === "https";
-
 export async function destroySession(token: string) {
   await env.DB!.prepare("DELETE FROM sessions WHERE id=?").bind(await sha256Hex(token)).run();
 }

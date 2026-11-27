@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { sameOrigin } from "@/app/auth";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
-import { SESSION_COOKIE, currentSessionId, isSecureRequest, rotationStatements, sessionCookieOptions } from "@/app/auth";
+import { SESSION_COOKIE, currentSessionId, isHttps, rotationStatements, sessionCookieOptions } from "@/app/auth";
 import { matchesRecovery } from "@/lib/mfa";
 import { BAD_CODE, auditStmt, err, mfaGuard, ok, triesAllowed } from "@/lib/mfa-routes";
 import { AUDIT_UNAVAILABLE, runAudited } from "@/lib/audit";
@@ -38,6 +38,6 @@ export async function POST(req: NextRequest) {
   ]);
   if (!done) return err(AUDIT_UNAVAILABLE, 503);
   const res = ok({ remaining: rows.length - 1 });
-  res.cookies.set(SESSION_COOKIE, rot.token, sessionCookieOptions(isSecureRequest(req)));
+  res.cookies.set(SESSION_COOKIE, rot.token, sessionCookieOptions(isHttps(req)));
   return res;
 }
