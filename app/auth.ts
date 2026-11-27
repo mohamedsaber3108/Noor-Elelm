@@ -112,14 +112,27 @@ export function safeReturnTo(value: string | null | undefined): string {
   return value;
 }
 
+/** Is this request https? True if the URL says so or the first X-Forwarded-Proto value does ("https, http" counts as https). */
+export function isHttps(req: Request): boolean {
+  return new URL(req.url).protocol === "https:" || req.headers.get("x-forwarded-proto")?.split(",")[0].trim() === "https";
+}
+
 /** CSRF guard: a browser Origin must match the host this request was addressed to (directly or via our reverse proxy). */
 export function sameOrigin(req: Request): boolean {
   const origin = req.headers.get("origin");
-  if (!origin) return true; // non-browser clients; cookies are SameSite=Lax regardless
-  let originHost: string;
-  try { originHost = new URL(origin).host; } catch { return false; }
+  if (!origin) {
+    // No Origin: trust the browser's Sec-Fetch-Site hint when it is there.
+    const site = req.headers.get("sec-fetch-site");
+    if (site) return site === "same-origin" || site === "none";
+    // No hints at all: only a client without a session cookie (scripts, curl) may go on.
+    return !new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=`).test(req.headers.get("cookie") || "");
+  }
+  let o: URL;
+  try { o = new URL(origin); } catch { return false; } // "null" lands here
+  const scheme = isHttps(req) ? "https:" : "http:";
+  if (o.protocol !== scheme) return false;
   const hosts = [new URL(req.url).host, req.headers.get("host"), req.headers.get("x-forwarded-host")?.split(",")[0].trim()];
-  return hosts.some((h) => !!h && h === originHost);
+  return hosts.some((h) => !!h && h === o.host);
 }
 
 /**

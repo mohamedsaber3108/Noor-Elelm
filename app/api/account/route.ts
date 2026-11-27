@@ -3,11 +3,11 @@ import { env } from "cloudflare:workers";
 import { z } from "zod";
 import { AUDIT_UNAVAILABLE, auditStatement, runAudited } from "@/lib/audit";
 import {
-  SESSION_COOKIE, clientIp, createSession, getCurrentUser, hashPassword, rateLimit, sameOrigin, sessionCookieOptions, verifyPassword,
+  SESSION_COOKIE, clientIp, createSession, getCurrentUser, hashPassword, isHttps, rateLimit, sameOrigin, sessionCookieOptions, verifyPassword,
 } from "@/app/auth";
 
 const err = (error: string, status: number) => NextResponse.json({ error }, { status });
-const isSecure = (req: NextRequest) => new URL(req.url).protocol === "https:" || req.headers.get("x-forwarded-proto") === "https";
+const isSecure = isHttps;
 const pwSchema = z.object({ current: z.string().min(1).max(200), next: z.string().min(10).max(200) });
 const nameSchema = z.object({ name: z.string().trim().min(2).max(60) });
 const deleteSchema = z.object({ password: z.string().min(1).max(200) });
