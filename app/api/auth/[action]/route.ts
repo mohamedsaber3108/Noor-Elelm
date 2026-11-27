@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 import { z } from "zod";
 import {
   SESSION_COOKIE, clientIp, createSession, destroySession, getCurrentUser, hashPassword, isReviewer,
-  isHttps, rateLimit, sameOrigin, sessionCookieOptions, verifyPassword,
+  isHttps, rateLimit, registrationAllowed, registrationMode, sameOrigin, sessionCookieOptions, verifyPassword,
 } from "@/app/auth";
 
 const email = z.string().trim().toLowerCase().email().max(254);
@@ -18,7 +18,7 @@ const isSecure = isHttps;
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
   if ((await ctx.params).action !== "session") return err("NOT_FOUND", 404);
   const u = await getCurrentUser();
-  return NextResponse.json({ user: u ? { name: u.displayName, email: u.email, reviewer: isReviewer(u) } : null }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ user: u ? { name: u.displayName, email: u.email, reviewer: isReviewer(u) } : null, registrationOpen: registrationMode() !== "closed" }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
@@ -40,6 +40,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
   try { body = await req.json(); } catch { return err("INVALID_JSON", 400); }
 
   if (action === "register") {
+    // Same refusal for every case, so the response never says who is on the allowlist.
+    const wanted = email.safeParse((body as { email?: unknown } | null)?.email);
+    if (registrationMode() !== "open" && (!wanted.success || !registrationAllowed(wanted.data))) return err("REGISTRATION_CLOSED", 403);
     if (!(await rateLimit(`reg:${ip}`, 5, 60 * 60 * 1000))) return err("RATE_LIMITED", 429);
     const parsed = registerSchema.safeParse(body);
     if (!parsed.success) return err("INVALID_INPUT", 400);

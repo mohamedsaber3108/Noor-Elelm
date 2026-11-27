@@ -131,3 +131,23 @@ export function clientIp(req: Request): string {
   }
   return req.headers.get("cf-connecting-ip") || "unknown";
 }
+
+export type RegistrationMode = "closed" | "allowlist" | "open";
+
+/** Sign-up policy from REGISTRATION_MODE. Anything unset or unknown is `closed` (OD-04c). */
+export function registrationMode(): RegistrationMode {
+  const v = String((env as unknown as Record<string, unknown>).REGISTRATION_MODE || "").trim().toLowerCase();
+  return v === "open" || v === "allowlist" ? v : "closed";
+}
+
+// Limits of `allowlist` (review PR #2, findings 1-2): a stranger can test whether an address is listed
+// (403 vs other answers), and email is not verified, so the first person to register a listed address owns it.
+// Keep `closed` until email verification exists (OD-04b). Behaviour is unchanged on purpose.
+/** True when the current mode lets this email register. REGISTRATION_ALLOWLIST is a comma list of emails. */
+export function registrationAllowed(email: string): boolean {
+  const mode = registrationMode();
+  if (mode === "open") return true;
+  if (mode !== "allowlist") return false;
+  const list = String((env as unknown as Record<string, unknown>).REGISTRATION_ALLOWLIST || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  return list.includes(email.trim().toLowerCase());
+}

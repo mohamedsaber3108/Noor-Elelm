@@ -7,5 +7,7 @@ import { clearCookies } from "./mocks/next-headers";
 beforeEach(() => {
   env.DB = new D1Stub(newDb()) as unknown as D1Database;
   delete (env as unknown as Record<string, unknown>).REVIEWER_IDS;
+  delete (env as unknown as Record<string, unknown>).REGISTRATION_MODE;
+  delete (env as unknown as Record<string, unknown>).REGISTRATION_ALLOWLIST;
   clearCookies();
 });
