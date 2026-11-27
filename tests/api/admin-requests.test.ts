@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PUT as usersPut } from "@/app/api/admin/users/route";
 import { GET as reqGet, POST as reqPost } from "@/app/api/admin/admin-requests/route";
-import { REQUEST_TTL_MS, decideRequest } from "@/lib/admin-requests";
+import { REQUEST_TTL_MS, decideRequest, requestPromotion } from "@/lib/admin-requests";
 import { env } from "cloudflare:workers";
 import { SESSION_COOKIE, createSession } from "@/app/auth";
 import { setCookie } from "../mocks/next-headers";
@@ -184,5 +184,33 @@ describe("decideRequest: two admins approve at the same moment", () => {
     ]);
     expect(out.filter((r) => r.ok)).toHaveLength(1);
     expect(await count("SELECT COUNT(*) AS n FROM audit_events WHERE action IN ('ROLE_CHANGED','ADMIN_PROMOTION_REJECTED')")).toBe(1);
+  });
+});
+
+describe("requestPromotion and requester checks", () => {
+  it("two admins ask at the same moment for the same target: exactly one request opens", async () => {
+    const a1 = await signIn("admin");
+    const a2 = await seedUser("admin");
+    const t = await seedUser("learner");
+    const D = env.DB as unknown as D1Database;
+    const req = call("PUT", "/api/admin/users");
+    const out = await Promise.all([
+      requestPromotion(D, req, { userId: a1.id, role: "admin" }, t.id, STEP_UP.reason),
+      requestPromotion(D, req, { userId: a2.id, role: "admin" }, t.id, STEP_UP.reason),
+    ]);
+    expect(out.filter((r) => r.ok)).toHaveLength(1);
+    expect(out.filter((r) => !r.ok)).toEqual([{ ok: false, error: "REQUEST_PENDING", status: 409 }]);
+    expect(await count("SELECT COUNT(*) AS n FROM admin_requests WHERE status='PENDING'")).toBe(1);
+    expect(await count("SELECT COUNT(*) AS n FROM audit_events WHERE action='ADMIN_PROMOTION_REQUESTED'")).toBe(1);
+  });
+  it("a request whose requester is no longer an admin cannot be approved (409 REQUEST_CLOSED)", async () => {
+    const { a1, a2, t, res } = await twoAdminsAndRequest();
+    const { requestId } = await res.json();
+    await db().prepare("UPDATE users SET role='learner' WHERE id=?").bind(a1.id).run();
+    await actAs(a2.id);
+    const r = await decide(requestId, "APPROVE");
+    expect(r.status).toBe(409);
+    expect((await r.json()).error).toBe("REQUEST_CLOSED");
+    expect(await roleOf(t.id)).toBe("learner");
   });
 });

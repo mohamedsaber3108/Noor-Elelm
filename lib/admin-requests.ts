@@ -53,13 +53,16 @@ export async function decideRequest(
   if (!r) return { ok: false, error: "NOT_FOUND", status: 404 };
   if (r.status !== "PENDING") return { ok: false, error: "REQUEST_CLOSED", status: 409 };
   if (r.requested_by === admin.userId || r.target_id === admin.userId) return { ok: false, error: "SELF_APPROVAL_REFUSED", status: 403 };
+  // The request stands only while its requester is still an admin.
+  const requester = await db.prepare("SELECT role FROM users WHERE id=?").bind(r.requested_by).first<{ role: string }>();
+  if (requester?.role !== "admin") return { ok: false, error: "REQUEST_CLOSED", status: 409 };
   const target = await db.prepare("SELECT role FROM users WHERE id=?").bind(r.target_id).first<{ role: string }>();
   if (!target) return { ok: false, error: "NOT_FOUND", status: 404 };
   const status = decision === "APPROVE" ? "APPROVED" : "REJECTED";
   const now = Date.now(), source = clientIp(req);
   // Guard first in the batch: if another admin closed the request after the read above, the batch stops here and
   // rolls back, so no role change and no second audit row are written.
-  const guard = db.prepare("SELECT CASE WHEN EXISTS(SELECT 1 FROM admin_requests WHERE id=? AND status='PENDING') THEN 1 ELSE abs(-9223372036854775808) END AS ok").bind(id);
+  const guard = db.prepare("SELECT CASE WHEN EXISTS(SELECT 1 FROM admin_requests WHERE id=? AND status='PENDING' AND expires_at>?) THEN 1 ELSE abs(-9223372036854775808) END AS ok").bind(id, now);
   const close = db.prepare("UPDATE admin_requests SET status=?,decided_by=?,decided_at=? WHERE id=? AND status='PENDING'").bind(status, admin.userId, now, id);
   try {
     const done = await runAudited(db, async () => decision === "APPROVE"

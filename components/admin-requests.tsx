@@ -44,7 +44,7 @@ export function AdminRequests({ refresh, onDecided }: { refresh: number; onDecid
       const r = await fetch('/api/admin/admin-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: open.id, decision: open.decision, password: pw, reason: why }) });
       const d = await r.json().catch(() => ({})) as { error?: string };
       setPw('');
-      if (r.ok) { setMsg(open.decision === 'APPROVE' ? 'تمت الموافقة. أصبح المستخدم مديرًا.' : 'تم رفض الطلب.'); setOpen(null); setWhy(''); load(); onDecided(); }
+      if (r.ok) { setMsg(open.decision === 'APPROVE' ? 'تمت الموافقة. أصبح المستخدم مديرًا.' : 'تم رفض الطلب.'); setOpen(null); setWhy(''); load(); onDecided(); requestAnimationFrame(() => document.getElementById('req-title')?.focus()); }
       else setErr((d.error && errorText[d.error]) || 'تعذر تنفيذ العملية.');
     } catch { setErr('تعذر الاتصال. حاول مرة أخرى.'); }
     finally { setSending(false); }
@@ -52,7 +52,7 @@ export function AdminRequests({ refresh, onDecided }: { refresh: number; onDecid
 
   if (!rows || (rows.length === 0 && !msg)) return null;
   return <section className="correction-panel" aria-labelledby="req-title">
-    <h2 id="req-title">طلبات الترقية إلى مدير</h2>
+    <h2 id="req-title" tabIndex={-1}>طلبات الترقية إلى مدير</h2>
     {msg && <p role="status">{msg}</p>}
     {rows.length === 0 ? <p>لا طلبات معلّقة.</p> : <ul>{rows.map(r => <li key={r.id}>
       <p><bdi>{r.target_name || r.target_email || r.target_id}</bdi> · طلبه: <bdi>{r.requested_by_name || r.requested_by}</bdi> · ينتهي: <bdi dir="ltr">{time(r.expires_at)} UTC</bdi></p>
