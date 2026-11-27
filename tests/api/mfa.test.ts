@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { GET as contentGet, PUT as contentPut } from "@/app/api/admin/content/route";
 import { GET as importGet, POST as importPost } from "@/app/api/admin/import/route";
 import { GET as reviewGet, POST as reviewPost } from "@/app/api/admin/review/route";
+import { GET as auditListGet } from "@/app/api/admin/audit/route";
 import { GET as queueGet } from "@/app/api/admin/visual-queue/route";
 import { DELETE as usersDel, GET as usersGet, PUT as usersPut } from "@/app/api/admin/users/route";
 import { GET as corrGet } from "@/app/api/corrections/route";
@@ -107,6 +108,7 @@ describe("staff session without MFA", () => {
     () => usersPut(call("PUT", "/api/admin/users", { id: "x", role: "admin" }) as never),
     () => usersDel(call("DELETE", "/api/admin/users", { id: "x" }) as never),
     () => corrGet(),
+    () => auditListGet(call("GET", "/api/admin/audit") as never),
   ];
   for (const role of ["admin", "reviewer"] as const) {
     it(`${role}: 403 on every admin route until verified, 200 after`, async () => {

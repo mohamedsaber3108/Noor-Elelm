@@ -6,6 +6,7 @@ import {
   isHttps, rateLimit, registrationAllowed, registrationMode, sameOrigin, sessionCookieOptions, verifyPassword,
 } from "@/app/auth";
 import { issueMail } from "@/lib/auth-tokens";
+import { auditLoginFailed } from "@/lib/audit-denied";
 
 const email = z.string().trim().toLowerCase().email().max(254);
 const registerSchema = z.object({ email, password: z.string().min(10).max(200), name: z.string().trim().min(2).max(60) });
@@ -71,7 +72,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
   if (!(await rateLimit(`login:${ip}:${mail}`, 8, 15 * 60 * 1000)) || !(await rateLimit(`loginip:${ip}`, 40, 15 * 60 * 1000))) return err("RATE_LIMITED", 429);
   const row = await env.DB.prepare("SELECT id,password_hash,role FROM users WHERE email=?").bind(mail).first<{ id: string; password_hash: string; role: string }>();
   const ok = await verifyPassword(password, row?.password_hash ?? DUMMY_HASH);
-  if (!row || !ok) return err("INVALID_CREDENTIALS", 401);
+  if (!row || !ok) {
+    // Only a wrong password for an existing account is logged (by id). An unknown email leaves no trace. The answer is the same.
+    if (row) await auditLoginFailed(req, row.id, row.role);
+    return err("INVALID_CREDENTIALS", 401);
+  }
   await env.DB.prepare("UPDATE users SET last_login_at=CURRENT_TIMESTAMP WHERE id=?").bind(row.id).run();
   // Staff get an unverified session; the page sends them to /mfa and nothing else works until they finish.
   const res = NextResponse.json({ ok: true, ...(isStaff({ userId: row.id, role: row.role }) ? { mfa: "required" } : {}) });
