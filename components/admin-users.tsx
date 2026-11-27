@@ -28,7 +28,7 @@ export function AdminUsers() {
   async function act(method: 'PUT' | 'DELETE', body: object, ok: string) {
     const r = await fetch('/api/admin/users', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({})) as { error?: string };
-    setMsg(r.ok ? ok : d.error === 'LAST_ADMIN' ? 'لا يمكن إزالة آخر مدير.' : 'تعذر تنفيذ العملية.');
+    setMsg(r.ok ? ok : d.error === 'LAST_ADMIN' ? 'لا يمكن إزالة آخر مدير.' : d.error === 'SELF_RESET_REFUSED' ? 'لا يمكنك إعادة ضبط حسابك بنفسك.' : 'تعذر تنفيذ العملية.');
     if (r.ok) load();
   }
 
@@ -44,7 +44,7 @@ export function AdminUsers() {
       {data.users.map(u => <tr key={u.id}><td>{u.name}</td><td dir="ltr">{u.email}</td>
         <td><select aria-label={'دور ' + u.name} value={u.role} onChange={e => act('PUT', { id: u.id, role: e.target.value }, 'تم تحديث الدور.')}>{Object.entries(roleNames).map(([v, n]) => <option key={v} value={v}>{n}</option>)}</select></td>
         <td>{u.coins}</td><td dir="ltr">{u.lastLoginAt?.slice(0, 16) ?? '—'}</td>
-        <td><button className="btn-outline" onClick={() => act('DELETE', { id: u.id }, 'تم إنهاء جلسات المستخدم.')}>إنهاء الجلسات</button></td></tr>)}
+        <td><button className="btn-outline" onClick={() => act('DELETE', { id: u.id }, 'تم إنهاء جلسات المستخدم.')}>إنهاء الجلسات</button>{u.role !== 'learner' && <button className="btn-outline" aria-label={'إعادة ضبط التحقق بخطوتين لـ ' + u.name} onClick={() => { if (window.confirm('إعادة ضبط التحقق بخطوتين لهذا المستخدم؟ سيُنهى دخوله ويُسجَّل الإجراء.')) act('PUT', { id: u.id, resetMfa: true }, 'تمت إعادة ضبط التحقق بخطوتين.'); }}>إعادة ضبط التحقق</button>}</td></tr>)}
       {data.users.length === 0 && <tr><td colSpan={6}>لا نتائج.</td></tr>}
     </tbody></table></div>}
     <div className="admin-pager"><button className="btn-outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>السابق</button><span>{page} / {pages}</span><button className="btn-outline" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>التالي</button></div>

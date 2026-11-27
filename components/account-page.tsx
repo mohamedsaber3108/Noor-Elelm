@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from 'react';
 import Link from '@/components/full-page-link';
+import { VerifyBanner } from '@/components/reset-pages';
 
 type Account = { name: string; email: string; role: string; createdAt: string | null; activeSessions: number };
 const errors: Record<string, string> = {
@@ -51,6 +52,7 @@ export function AccountPage() {
   if (!acc) return <main className="page-main"><div className="page-hero"><h1>حسابي</h1></div><div className="empty-state">سجّل الدخول لإدارة حسابك. <Link href="/login?return_to=%2Faccount">تسجيل الدخول</Link></div></main>;
   const admin = acc.role === 'admin';
   return <main className="page-main"><div className="page-hero"><span className="eyebrow">حسابك</span><h1>{acc.name}</h1><p dir="ltr" style={{ textAlign: 'right' }}>{acc.email}</p></div>
+    <VerifyBanner />
     <div className="correction-panel">
       <p>الدور: <strong>{roleNames[acc.role] || acc.role}</strong> · الجلسات النشطة: <strong>{acc.activeSessions}</strong></p>
       {(admin || acc.role === 'reviewer') && <p><Link href="/admin">لوحة المراجعة</Link>{admin && <> · <Link href="/admin/users">إدارة المستخدمين والإحصاءات</Link></>}</p>}

@@ -1,11 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { env } from "cloudflare:workers";
 import { GET, POST } from "@/app/api/auth/[action]/route";
-import { PASSWORD, authCtx, call, count, db, seedUser, signIn, EVIL } from "../helpers";
+import { PASSWORD, authCtx, call, count, db, seedUser, setEnv, signIn, EVIL } from "../helpers";
 
 const reg = { email: "New.User@Example.test", password: "a-long-password-1", name: "New User" };
 
 describe("POST /api/auth/register", () => {
+  beforeEach(() => setEnv("REGISTRATION_MODE", "open"));
   it("creates the user, lowercases the email, and sets an httpOnly session cookie", async () => {
     const res = await POST(call("POST", "/api/auth/register", reg), authCtx("register"));
     expect(res.status).toBe(201);
@@ -108,7 +109,7 @@ describe("POST /api/auth/logout and other actions", () => {
 describe("GET /api/auth/session", () => {
   it("returns user null without a session", async () => {
     const res = await GET(call("GET", "/api/auth/session"), authCtx("session"));
-    expect(await res.json()).toEqual({ user: null });
+    expect(await res.json()).toEqual({ user: null, registrationOpen: false });
   });
   it("shows reviewer false for a learner and true for a reviewer", async () => {
     await signIn("learner");
@@ -118,5 +119,94 @@ describe("GET /api/auth/session", () => {
   });
   it("unknown GET action returns 404", async () => {
     expect((await GET(call("GET", "/api/auth/other"), authCtx("other"))).status).toBe(404);
+  });
+});
+
+describe("registration mode (OD-04c)", () => {
+  const register = (body: unknown = reg) => POST(call("POST", "/api/auth/register", body), authCtx("register"));
+  const users = () => count("SELECT COUNT(*) AS n FROM users");
+
+  it("is closed when REGISTRATION_MODE is unset: 403 REGISTRATION_CLOSED, no row, no session", async () => {
+    const res = await register();
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "REGISTRATION_CLOSED" });
+    expect(res.headers.get("set-cookie")).toBeNull();
+    expect(await users()).toBe(0);
+  });
+  it("treats an unknown value as closed", async () => {
+    for (const v of ["", "yes", "true", "everyone"]) {
+      setEnv("REGISTRATION_MODE", v);
+      expect((await register()).status).toBe(403);
+    }
+    expect(await users()).toBe(0);
+  });
+  it("accepts open in any case with spaces", async () => {
+    setEnv("REGISTRATION_MODE", " Open ");
+    expect((await register()).status).toBe(201);
+  });
+  it("open mode behaves as before (bad input is 400, not 403)", async () => {
+    setEnv("REGISTRATION_MODE", "open");
+    expect((await register({ ...reg, password: "short" })).status).toBe(400);
+    expect((await register()).status).toBe(201);
+  });
+  it("allowlist accepts a listed email (case and spaces ignored) and refuses another with the same error", async () => {
+    setEnv("REGISTRATION_MODE", "allowlist");
+    setEnv("REGISTRATION_ALLOWLIST", " NEW.user@example.test , other@example.test");
+    const refused = await register({ ...reg, email: "stranger@example.test" });
+    expect(refused.status).toBe(403);
+    const closedBody = await refused.json();
+    expect(closedBody).toEqual({ error: "REGISTRATION_CLOSED" });
+    expect((await register()).status).toBe(201);
+    expect(await users()).toBe(1);
+    // refusal of a bad email looks the same as refusal of an unlisted one
+    expect(await (await register({ ...reg, email: "not-an-email" })).json()).toEqual(closedBody);
+  });
+  it("allowlist with an empty list refuses everyone", async () => {
+    setEnv("REGISTRATION_MODE", "allowlist");
+    setEnv("REGISTRATION_ALLOWLIST", " , ");
+    expect((await register()).status).toBe(403);
+  });
+  it("allowlist matches the exact address only: plus-address and look-alikes are refused", async () => {
+    setEnv("REGISTRATION_MODE", "allowlist");
+    setEnv("REGISTRATION_ALLOWLIST", "a@x.test");
+    for (const email of ["a+1@x.test", "\u0410@x.test", "\uFF21@x.test", "a@x.test.evil"]) {
+      const res = await register({ ...reg, email });
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "REGISTRATION_CLOSED" });
+    }
+    expect(await users()).toBe(0);
+    expect((await register({ ...reg, email: "A@X.test" })).status).toBe(201);
+  });
+  it("no other route creates users: admin users and account export no create handler", async () => {
+    const admin = await import("@/app/api/admin/users/route");
+    const account = await import("@/app/api/account/route");
+    expect(Object.keys(admin).sort()).toEqual(["DELETE", "GET", "PUT"]);
+    expect(Object.keys(account).sort()).toEqual(["DELETE", "GET", "PATCH", "POST"]);
+    const { readFileSync } = await import("node:fs");
+    for (const f of ["../../app/api/admin/users/route.ts", "../../app/api/account/route.ts"]) {
+      expect(readFileSync(new URL(f, import.meta.url), "utf8")).not.toMatch(/INSERT\s+INTO\s+users/i);
+    }
+  });
+  it("a refused request does not use the rate limit", async () => {
+    for (let i = 0; i < 7; i++) await register();
+    expect(await count("SELECT COUNT(*) AS n FROM rate_limits")).toBe(0);
+  });
+  it("login works in every mode", async () => {
+    const u = await seedUser("learner", "a@example.test");
+    for (const mode of [undefined, "closed", "allowlist", "open", "junk"]) {
+      setEnv("REGISTRATION_MODE", mode);
+      const res = await POST(call("POST", "/api/auth/login", { email: u.email, password: PASSWORD }), authCtx("login"));
+      expect(res.status).toBe(200);
+    }
+  });
+  it("the session route reports a boolean only and never the list", async () => {
+    setEnv("REGISTRATION_ALLOWLIST", "secret.person@example.test");
+    for (const [mode, open] of [[undefined, false], ["closed", false], ["junk", false], ["allowlist", true], ["open", true]] as const) {
+      setEnv("REGISTRATION_MODE", mode);
+      const res = await GET(call("GET", "/api/auth/session"), authCtx("session"));
+      const text = await res.text();
+      expect(JSON.parse(text).registrationOpen).toBe(open);
+      expect(text).not.toContain("secret.person");
+    }
   });
 });

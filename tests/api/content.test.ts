@@ -4,7 +4,7 @@ import { GET as archive } from "@/app/api/archive/route";
 import { GET as ucGet, POST as ucPost } from "@/app/api/user-content/route";
 import { GET as corrGet, POST as corrPost } from "@/app/api/corrections/route";
 import summaries from "@/data/archive-summaries.json";
-import { setEnv, call, count, signIn, EVIL } from "../helpers";
+import { setEnv, call, count, signIn, verifySessions, EVIL } from "../helpers";
 
 const ID = (summaries as { id: string }[])[0].id;
 
@@ -46,6 +46,7 @@ describe("GET /api/archive", () => {
   it("lets a user listed in REVIEWER_IDS read the text (known gap: env path, see N-15)", async () => {
     const u = await signIn("learner");
     setEnv("REVIEWER_IDS", `x, ${u.id}`);
+    await verifySessions(u.id);
     expect((await (await archive(call("GET", `/api/archive?id=${ID}`))).json()).restricted).toBe(false);
   });
 });
@@ -85,9 +86,12 @@ describe("/api/user-content", () => {
     env.DB = undefined;
     expect((await ucGet()).status).toBe(401);
   });
-  it.fails("BUG: a cross-origin POST should be refused with 403 BAD_ORIGIN (route has no sameOrigin check)", async () => {
+  it("refuses a cross-origin POST with 403 BAD_ORIGIN", async () => {
     await signIn("learner");
-    expect((await ucPost(call("POST", "/api/user-content", { id: ID, action: "bookmark" }, EVIL))).status).toBe(403);
+    const res = await ucPost(call("POST", "/api/user-content", { id: ID, action: "bookmark" }, EVIL));
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe("BAD_ORIGIN");
+    expect(await count("SELECT COUNT(*) AS n FROM bookmarks")).toBe(0);
   });
 });
 
@@ -133,8 +137,11 @@ describe("/api/corrections", () => {
     await signIn("admin");
     expect((await corrGet()).status).toBe(200);
   });
-  it.fails("BUG: a cross-origin POST should be refused with 403 BAD_ORIGIN (route has no sameOrigin check)", async () => {
+  it("refuses a cross-origin POST with 403 BAD_ORIGIN", async () => {
     await signIn("learner");
-    expect((await corrPost(call("POST", "/api/corrections", good, EVIL))).status).toBe(403);
+    const res = await corrPost(call("POST", "/api/corrections", good, EVIL));
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe("BAD_ORIGIN");
+    expect(await count("SELECT COUNT(*) AS n FROM audit_events WHERE action='CORRECTION_REPORT'")).toBe(0);
   });
 });
