@@ -21,7 +21,7 @@ const errorText: Record<string, string> = {
 
 export function AdminUsers() {
   const [data, setData] = useState<Data | null>(null), [state, setState] = useState<'loading' | 'denied' | 'ok' | 'error'>('loading');
-  const [q, setQ] = useState(''), [page, setPage] = useState(1), [msg, setMsg] = useState('');
+  const [q, setQ] = useState(''), [page, setPage] = useState(1), [msg, setMsg] = useState(''), [msgErr, setMsgErr] = useState(false);
   const [pending, setPending] = useState<{ id: string; name: string; role: string } | null>(null), [pw, setPw] = useState(''), [why, setWhy] = useState('');
 
   const load = useCallback(async () => {
@@ -37,7 +37,7 @@ export function AdminUsers() {
   async function act(method: 'PUT' | 'DELETE', body: object, ok: string) {
     const r = await fetch('/api/admin/users', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({})) as { error?: string };
-    setMsg(r.ok ? ok : (d.error && errorText[d.error]) || 'تعذر تنفيذ العملية.');
+    setMsg(r.ok ? ok : (d.error && errorText[d.error]) || 'تعذر تنفيذ العملية.'); setMsgErr(!r.ok);
     if (r.ok) load();
     return r.ok;
   }
@@ -56,13 +56,13 @@ export function AdminUsers() {
     <nav className="admin-nav" aria-label="أقسام الإدارة"><Link href="/admin">المراجعة</Link> · <Link href="/admin/corrections">البلاغات</Link> · <Link href="/admin/infographics">الإنفوجرافيك</Link> · <Link href="/admin/settings">الإعدادات</Link> · <Link href="/admin/audit">سجل التدقيق</Link> · <Link href="/admin/editorial">لوحة التحرير</Link></nav>
     {state === 'error' && <div role="alert" className="error-note">تعذر تحميل البيانات.</div>}
     {data && <div className="admin-stats">{labels.map(([k, l]) => <div key={k}><span>{l}</span><strong>{String(data.stats[k] ?? 0)}</strong></div>)}</div>}
-    {msg && <p role="status">{msg}</p>}
-    {pending && <form className="correction-panel" aria-labelledby="stepup-title" onSubmit={confirmRole} onKeyDown={e => { if (e.key === 'Escape') setPending(null); }}>
+    {msg && <p role={msgErr ? 'alert' : 'status'} className={msgErr ? 'error-note' : undefined}>{msg}</p>}
+    {pending && <form className="correction-panel" aria-labelledby="stepup-title" onSubmit={confirmRole} onKeyDown={e => { if (e.key === 'Escape') { setPending(null); setPw(''); setWhy(''); } }}>
       <h2 id="stepup-title">تأكيد تغيير الدور</h2>
       <p>{pending.name}: <strong>{roleNames[pending.role] || pending.role}</strong></p>
       <label>كلمة المرور الخاصة بك<input type="password" autoComplete="current-password" required maxLength={200} value={pw} onChange={e => setPw(e.target.value)} autoFocus /></label>
       <label>السبب (١٠ إلى ٣٠٠ حرف)<textarea required minLength={10} maxLength={300} rows={3} value={why} onChange={e => setWhy(e.target.value)} /></label>
-      <button className="btn-primary" disabled={!pw || why.trim().length < 10}>تأكيد</button> <button type="button" className="btn-outline" onClick={() => setPending(null)}>إلغاء</button>
+      <button className="btn-primary" disabled={!pw || why.trim().length < 10}>تأكيد</button> <button type="button" className="btn-outline" onClick={() => { setPending(null); setPw(''); setWhy(''); }}>إلغاء</button>
     </form>}
     <label className="admin-search">بحث<input type="search" value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="الاسم أو البريد" /></label>
     {data && <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>الاسم</th><th>البريد</th><th>الدور</th><th>النقاط</th><th>آخر دخول</th><th>إجراءات</th></tr></thead><tbody>

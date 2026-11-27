@@ -33,13 +33,14 @@ export async function stepUp(
   if (!password) return { ok: false, error: "STEP_UP_REQUIRED", status: 400 };
   if (reason.length < REASON_MIN || reason.length > REASON_MAX) return { ok: false, error: "REASON_REQUIRED", status: 400 };
   const key = `stepupfail:${user.userId}`;
-  const fails = await db.prepare("SELECT count FROM rate_limits WHERE key=? AND reset_at>?").bind(key, Date.now()).first<{ count: number }>();
-  if ((fails?.count ?? 0) >= MAX_FAILS) return { ok: false, error: "RATE_LIMITED", status: 429 };
+  // Count the attempt first, in one atomic upsert (app/auth.ts rateLimit), so parallel guesses cannot all pass a
+  // separate read. A right password gives the count back below, so only wrong passwords use up the limit.
+  if (!(await rateLimit(key, MAX_FAILS, WINDOW_MS))) return { ok: false, error: "RATE_LIMITED", status: 429 };
   const row = await db.prepare("SELECT password_hash FROM users WHERE id=?").bind(user.userId).first<{ password_hash: string }>();
   if (!row || !(await verifyPassword(password, row.password_hash))) {
-    await rateLimit(key, MAX_FAILS, WINDOW_MS);
     await auditStepUpFailed(req, user, route);
     return { ok: false, error: "STEP_UP_FAILED", status: 403 };
   }
+  await db.prepare("UPDATE rate_limits SET count=count-1 WHERE key=? AND count>0").bind(key).run();
   return { ok: true, reason };
 }

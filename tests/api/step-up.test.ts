@@ -72,4 +72,20 @@ describe("step-up on role change (N-15b)", () => {
     expect(a!.detail_json).not.toContain(PASSWORD);
     expect(await count("SELECT COUNT(*) AS n FROM audit_events WHERE action='STEP_UP_FAILED'")).toBe(0);
   });
+  it("a burst of parallel wrong guesses cannot pass the limit", async () => {
+    await signIn("admin");
+    const t = await seedUser("learner");
+    const wrong = { id: t.id, role: "reviewer", password: "nope", reason: STEP_UP.reason };
+    const codes = (await Promise.all(Array.from({ length: 12 }, () => put(wrong)))).map((r) => r.status);
+    expect(codes.filter((c) => c === 403)).toHaveLength(MAX_FAILS);
+    expect(codes.filter((c) => c === 429)).toHaveLength(12 - MAX_FAILS);
+    expect((await put({ id: t.id, role: "reviewer", ...STEP_UP })).status).toBe(429);
+    expect(await roleOf(t.id)).toBe("learner");
+  });
+  it("reasons of exactly 10 and 300 characters pass", async () => {
+    await signIn("admin");
+    const t = await seedUser("learner");
+    expect((await put({ id: t.id, role: "reviewer", password: PASSWORD, reason: "x".repeat(10) })).status).toBe(200);
+    expect((await put({ id: t.id, role: "scholar", password: PASSWORD, reason: "y".repeat(300) })).status).toBe(200);
+  });
 });
