@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from '@/components/full-page-link';
 import { AdminRequests } from '@/components/admin-requests';
+import { AdminExport } from '@/components/admin-export';
 
 type U = { id: string; email: string; name: string; role: string; createdAt: string; lastLoginAt: string | null; coins: number; suspendedAt: number | null; staffNote: string | null };
 type Data = { users: U[]; total: number; page: number; pageSize: number; stats: Record<string, number | Record<string, number>> };
@@ -104,6 +105,7 @@ export function AdminUsers() {
       <button className="btn-primary" disabled={sending || !pw || why.trim().length < 10}>{sending ? 'جار الإرسال…' : 'تأكيد'}</button> <button type="button" className="btn-outline" onClick={() => closeForm(pending)}>إلغاء</button>
     </form>}
     <AdminRequests refresh={reqTick} onDecided={load} />
+    <AdminExport />
     <label className="admin-search">بحث<input type="search" value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="الاسم أو البريد" /></label>
     {data && <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>الاسم</th><th>البريد</th><th>الدور</th><th>الحالة</th><th>النقاط</th><th>آخر دخول</th><th>إجراءات</th></tr></thead><tbody>
       {data.users.map(u => <tr key={u.id}><td><bdi>{u.name}</bdi></td><td dir="ltr">{u.email}</td>
