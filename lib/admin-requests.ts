@@ -54,8 +54,8 @@ export async function decideRequest(
   if (r.status !== "PENDING") return { ok: false, error: "REQUEST_CLOSED", status: 409 };
   if (r.requested_by === admin.userId || r.target_id === admin.userId) return { ok: false, error: "SELF_APPROVAL_REFUSED", status: 403 };
   // The request stands only while its requester is still an admin.
-  const requester = await db.prepare("SELECT role FROM users WHERE id=?").bind(r.requested_by).first<{ role: string }>();
-  if (requester?.role !== "admin") return { ok: false, error: "REQUEST_CLOSED", status: 409 };
+  const requester = await db.prepare("SELECT role,suspended_at FROM users WHERE id=?").bind(r.requested_by).first<{ role: string; suspended_at: number | null }>();
+  if (requester?.role !== "admin" || requester.suspended_at != null) return { ok: false, error: "REQUEST_CLOSED", status: 409 };
   const target = await db.prepare("SELECT role FROM users WHERE id=?").bind(r.target_id).first<{ role: string }>();
   if (!target) return { ok: false, error: "NOT_FOUND", status: 404 };
   const status = decision === "APPROVE" ? "APPROVED" : "REJECTED";

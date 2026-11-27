@@ -78,6 +78,13 @@
       "when": 1795794674065,
       "tag": "0010_admin_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1795816997739,
+      "tag": "0011_user_suspend",
+      "breakpoints": true
     }
   ]
 }
