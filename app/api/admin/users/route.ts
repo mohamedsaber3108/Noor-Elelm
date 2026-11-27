@@ -6,6 +6,7 @@ import { AUDIT_UNAVAILABLE, auditStatement, runAudited } from "@/lib/audit";
 import { auditAdminDenied } from "@/lib/audit-denied";
 import { ROLES } from "@/lib/rbac";
 import { stepUp } from "@/lib/step-up";
+import { requestPromotion } from "@/lib/admin-requests";
 
 const err = (error: string, status: number) => NextResponse.json({ error }, { status });
 const PAGE = 25;
@@ -97,9 +98,21 @@ export async function PUT(req: NextRequest) {
     const n = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE role='admin'").first<{ n: number }>();
     if ((n?.n ?? 0) <= 1) return err("LAST_ADMIN", 409);
   }
+  // N-15c: from 2 admins on, a promotion to admin is a request that a different admin must approve.
+  // With fewer than 2 admins, the one admin promotes with step-up alone and the audit row says single_admin_bootstrap.
+  let bootstrap = false;
+  if (role === "admin" && target.role !== "admin") {
+    const n = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE role='admin'").first<{ n: number }>();
+    if ((n?.n ?? 0) >= 2) {
+      const r = await requestPromotion(db, req, admin, id, su.reason);
+      if (!r.ok) return err(r.error, r.status);
+      return NextResponse.json({ ok: true, status: "PENDING_APPROVAL", requestId: r.id }, { status: 202 });
+    }
+    bootstrap = true;
+  }
   const done = await runAudited(db, async () => [
     db.prepare("UPDATE users SET role=? WHERE id=?").bind(role, id),
-    await auditStatement(db, { actorId: admin.userId, actorRole: admin.role, action: "ROLE_CHANGED", targetId: id, detail: { from: target.role, to: role }, source: clientIp(req), reason: su.reason }),
+    await auditStatement(db, { actorId: admin.userId, actorRole: admin.role, action: "ROLE_CHANGED", targetId: id, detail: bootstrap ? { from: target.role, to: role, mode: "single_admin_bootstrap" } : { from: target.role, to: role }, source: clientIp(req), reason: su.reason }),
   ]);
   if (!done) return err(AUDIT_UNAVAILABLE, 503);
   return NextResponse.json({ ok: true });

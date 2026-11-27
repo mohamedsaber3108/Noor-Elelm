@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from '@/components/full-page-link';
+import { AdminRequests } from '@/components/admin-requests';
 
 type U = { id: string; email: string; name: string; role: string; createdAt: string; lastLoginAt: string | null; coins: number };
 type Data = { users: U[]; total: number; page: number; pageSize: number; stats: Record<string, number | Record<string, number>> };
@@ -17,6 +18,7 @@ const errorText: Record<string, string> = {
   STEP_UP_FAILED: 'كلمة المرور غير صحيحة.',
   REASON_REQUIRED: 'اكتب سببًا من ١٠ إلى ٣٠٠ حرف.',
   RATE_LIMITED: 'محاولات كثيرة. انتظر ١٥ دقيقة ثم حاول مرة أخرى.',
+  REQUEST_PENDING: 'يوجد طلب ترقية معلّق لهذا المستخدم.',
 };
 
 export function AdminUsers() {
@@ -24,6 +26,7 @@ export function AdminUsers() {
   const [q, setQ] = useState(''), [page, setPage] = useState(1), [msg, setMsg] = useState(''), [msgErr, setMsgErr] = useState(false);
   const [pending, setPending] = useState<{ id: string; name: string; role: string } | null>(null), [pw, setPw] = useState(''), [why, setWhy] = useState(''), [formErr, setFormErr] = useState(''), [sending, setSending] = useState(false);
   const selects = useRef<Record<string, HTMLSelectElement | null>>({});
+  const [reqTick, setReqTick] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -56,7 +59,7 @@ export function AdminUsers() {
       const r = await fetch('/api/admin/users', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: pending.id, role: pending.role, password: pw, reason: why }) });
       const d = await r.json().catch(() => ({})) as { error?: string };
       setPw('');
-      if (r.ok) { setMsg('تم تحديث الدور.'); setMsgErr(false); closeForm(pending.id); load(); }
+      if (r.ok) { setMsg(r.status === 202 ? 'أُرسل طلب الترقية إلى مدير. يحتاج موافقة مدير آخر.' : 'تم تحديث الدور.'); setMsgErr(false); closeForm(pending.id); load(); setReqTick(t => t + 1); }
       else setFormErr((d.error && errorText[d.error]) || 'تعذر تنفيذ العملية.');
     } catch { setFormErr('تعذر الاتصال. حاول مرة أخرى.'); }
     finally { setSending(false); }
@@ -78,6 +81,7 @@ export function AdminUsers() {
       <small id="stepup-count">{why.trim().length.toLocaleString('ar-EG')} / ٣٠٠</small>
       <button className="btn-primary" disabled={sending || !pw || why.trim().length < 10}>{sending ? 'جار الإرسال…' : 'تأكيد'}</button> <button type="button" className="btn-outline" onClick={() => closeForm(pending.id)}>إلغاء</button>
     </form>}
+    <AdminRequests refresh={reqTick} onDecided={load} />
     <label className="admin-search">بحث<input type="search" value={q} onChange={e => { setQ(e.target.value); setPage(1); }} placeholder="الاسم أو البريد" /></label>
     {data && <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>الاسم</th><th>البريد</th><th>الدور</th><th>النقاط</th><th>آخر دخول</th><th>إجراءات</th></tr></thead><tbody>
       {data.users.map(u => <tr key={u.id}><td>{u.name}</td><td dir="ltr">{u.email}</td>
