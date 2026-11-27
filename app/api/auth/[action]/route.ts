@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 import { z } from "zod";
 import {
   SESSION_COOKIE, clientIp, createSession, destroySession, getCurrentUser, hashPassword, isReviewer, isStaff,
-  rateLimit, registrationAllowed, registrationMode, sameOrigin, sessionCookieOptions, verifyPassword,
+  isHttps, rateLimit, registrationAllowed, registrationMode, sameOrigin, sessionCookieOptions, verifyPassword,
 } from "@/app/auth";
 
 const email = z.string().trim().toLowerCase().email().max(254);
@@ -13,7 +13,7 @@ const loginSchema = z.object({ email, password: z.string().min(1).max(200) });
 const DUMMY_HASH = "pbkdf2$100000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
 const err = (error: string, status: number) => NextResponse.json({ error }, { status });
-const isSecure = (req: NextRequest) => new URL(req.url).protocol === "https:" || req.headers.get("x-forwarded-proto") === "https";
+const isSecure = isHttps;
 
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
   if ((await ctx.params).action !== "session") return err("NOT_FOUND", 404);

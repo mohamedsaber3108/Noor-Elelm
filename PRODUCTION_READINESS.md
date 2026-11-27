@@ -87,7 +87,7 @@ Local numbers are a floor. Workers run at the edge with far more capacity. The a
 | Item | Why | What is needed |
 |---|---|---|
 | Password reset, email verification | no email provider | provider API key (e.g. Resend) and a token table |
-| Payments, subscriptions, transactions, coupons | no payment provider or approved prices; the pricing page says plans are proposals | provider account (Paymob/Stripe), tax and legal terms |
+| Payments, subscriptions, transactions, coupons | no payment provider or approved prices; billing is not active | provider account (Paymob/Stripe), tax and legal terms |
 | Reward redemption, partners | no partner agreements | partner contracts |
 | Family/child accounts | needs a guardian-consent design and legal review | policy decision |
 | Approved religious content | governance rule: nothing publishes without scholarly review | review board |
