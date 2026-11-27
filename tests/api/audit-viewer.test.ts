@@ -59,6 +59,8 @@ describe("GET /api/admin/audit filters and paging", () => {
     expect((await rows("?result=denied")).length).toBe(1);
     expect((await rows("?from=2020-01-02T00:00:00Z&to=2020-01-04T00:00:00Z")).length).toBe(1);
     expect((await rows("?from=2021-01-01")).length).toBe(2);
+    expect((await rows("?to=2020-01-03")).length).toBe(1); // date-only "to" includes that whole day
+    expect((await rows("?to=2020-01-02")).length).toBe(0);
     expect((await rows("?to=2021-01-01")).length).toBe(1);
     expect((await rows("?action=NONE")).length).toBe(0);
   });
@@ -198,5 +200,12 @@ describe("LOGIN_FAILED rows", () => {
     const res = await login(u.email, "wrong-password-123");
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "INVALID_CREDENTIALS" });
+  });
+});
+
+describe("clientIp", () => {
+  it("caps the source header at 64 characters", async () => {
+    const { clientIp } = await import("@/app/auth");
+    expect(clientIp(new Request("http://x/", { headers: { "cf-connecting-ip": "1".repeat(500) } })).length).toBe(64);
   });
 });

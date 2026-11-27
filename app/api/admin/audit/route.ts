@@ -24,7 +24,8 @@ const query = z.object({
   target: z.string().min(1).max(128).optional(),
   result: z.enum(["success", "denied", "failed"]).optional(),
   from: when.optional(),
-  to: when.optional(),
+  // A date-only "to" means the end of that day (UTC), so the day itself is included.
+  to: z.string().max(40).transform((s) => (/^\d{4}-\d{2}-\d{2}$/.test(s) ? s + "T23:59:59Z" : s)).pipe(when).optional(),
   limit: intParam.pipe(z.number().int().min(1)).optional(),
   before: intParam.optional(),
   beforeOld: intParam.optional(),

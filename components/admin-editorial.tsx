@@ -34,7 +34,7 @@ export function AdminEditorial() {
       .catch(() => setState('error'));
   }, []);
 
-  const nav = <nav className="admin-nav"><Link href="/admin">المراجعة</Link> · <Link href="/admin/corrections">البلاغات</Link> · <Link href="/admin/infographics">الإنفوجرافيك</Link> · <Link href="/admin/users">المستخدمون</Link></nav>;
+  const nav = <nav className="admin-nav" aria-label="أقسام الإدارة"><Link href="/admin">المراجعة</Link> · <Link href="/admin/corrections">البلاغات</Link> · <Link href="/admin/infographics">الإنفوجرافيك</Link> · <Link href="/admin/users">المستخدمون</Link> · <Link href="/admin/settings">الإعدادات</Link> · <Link href="/admin/audit">سجل التدقيق</Link></nav>;
   const head = <div className="page-hero"><span className="eyebrow">الإدارة</span><h1><Both ar="لوحة التحرير" en="Editorial dashboard" /></h1>
     <p><Both ar="أرقام حقيقية من قاعدة البيانات. لا يُنشر شيء تلقائيًا: النشر غير مفعّل." en="Real numbers from the database. Nothing publishes automatically: publication is off." /></p></div>;
 
@@ -47,7 +47,7 @@ export function AdminEditorial() {
         <div className="admin-stats">
           <Card href="/admin" ar="مسودات مستوردة" en="Imported drafts" value={data.content.imported} />
           <Card ar="متاح في الأرشيف" en="Available in the archive" value={data.content.available} />
-          {data.content.byStatus.map(s => <Card key={s.status} href="/admin" ar={'الحالة ' + s.status} en={'Status ' + s.status} value={s.count} />)}
+          {data.content.byStatus.map(s => <Card key={s.status} href="/admin" ar={'الحالة \u2068' + s.status + '\u2069'} en={'Status \u2068' + s.status + '\u2069'} value={s.count} />)}
           <Card ar="منشور" en="Released" value={data.publication.released} />
         </div></section>
       <section aria-labelledby="ed-reviews"><h2 id="ed-reviews"><Both ar="قرارات المراجعة" en="Review decisions" /></h2>

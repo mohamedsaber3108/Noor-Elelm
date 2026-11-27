@@ -193,9 +193,9 @@ export function clientIp(req: Request): string {
   const trusted = String((env as unknown as Record<string, unknown>).TRUST_PROXY_HEADER || "").toLowerCase();
   if (trusted) {
     const v = req.headers.get(trusted)?.split(",")[0].trim();
-    if (v) return v;
+    if (v) return v.slice(0, 64);
   }
-  return req.headers.get("cf-connecting-ip") || "unknown";
+  return (req.headers.get("cf-connecting-ip") || "unknown").slice(0, 64);
 }
 
 export type RegistrationMode = "closed" | "allowlist" | "open";
