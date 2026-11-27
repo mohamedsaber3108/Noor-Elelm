@@ -29,7 +29,11 @@ export const auditEvents = sqliteTable("audit_events",{id:text("id").primaryKey(
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(), email: text("email").notNull(), displayName: text("display_name").notNull(),
   passwordHash: text("password_hash").notNull(), role: text("role").notNull().default("learner"),
-  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`), lastLoginAt: text("last_login_at"), emailVerifiedAt: integer("email_verified_at")
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`), lastLoginAt: text("last_login_at"), emailVerifiedAt: integer("email_verified_at"),
+  /** N-18a: set while an admin has suspended the account (ms since epoch). A suspended account cannot sign in or use a session. */
+  suspendedAt: integer("suspended_at"),
+  /** N-18a: a short note for staff only, never shown to the user. */
+  staffNote: text("staff_note")
 }, t => [uniqueIndex("users_email_unique").on(t.email)]);
 // Single-use reset and verify tokens. Only the SHA-256 of the token is stored (OD-04b).
 export const authTokens = sqliteTable("auth_tokens", {

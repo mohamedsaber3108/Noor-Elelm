@@ -70,13 +70,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ action: st
   if (!parsed.success) return err("INVALID_INPUT", 400);
   const { email: mail, password } = parsed.data;
   if (!(await rateLimit(`login:${ip}:${mail}`, 8, 15 * 60 * 1000)) || !(await rateLimit(`loginip:${ip}`, 40, 15 * 60 * 1000))) return err("RATE_LIMITED", 429);
-  const row = await env.DB.prepare("SELECT id,password_hash,role FROM users WHERE email=?").bind(mail).first<{ id: string; password_hash: string; role: string }>();
+  const row = await env.DB.prepare("SELECT id,password_hash,role,suspended_at FROM users WHERE email=?").bind(mail).first<{ id: string; password_hash: string; role: string; suspended_at: number | null }>();
   const ok = await verifyPassword(password, row?.password_hash ?? DUMMY_HASH);
   if (!row || !ok) {
     // Only a wrong password for an existing account is logged (by id). An unknown email leaves no trace. The answer is the same.
     if (row) await auditLoginFailed(req, row.id, row.role);
     return err("INVALID_CREDENTIALS", 401);
   }
+  // N-18a: a suspended account is told so only after the right password, so the answer leaks nothing to a guesser.
+  if (row.suspended_at != null) return err("ACCOUNT_SUSPENDED", 403);
   await env.DB.prepare("UPDATE users SET last_login_at=CURRENT_TIMESTAMP WHERE id=?").bind(row.id).run();
   // Staff get an unverified session; the page sends them to /mfa and nothing else works until they finish.
   const res = NextResponse.json({ ok: true, ...(isStaff({ userId: row.id, role: row.role }) ? { mfa: "required" } : {}) });

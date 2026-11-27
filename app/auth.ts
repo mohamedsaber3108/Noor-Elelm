@@ -106,7 +106,7 @@ export async function getCurrentUser(opts: { allowUnverified?: boolean; touch?: 
   if (!token || token.length > 128) return null;
   const now = Date.now(), sid = await sha256Hex(token);
   const row = await env.DB.prepare(
-    "SELECT u.id,u.email,u.display_name,u.role,u.email_verified_at,s.mfa_verified_at,s.last_seen_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires_at>?",
+    "SELECT u.id,u.email,u.display_name,u.role,u.email_verified_at,s.mfa_verified_at,s.last_seen_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires_at>? AND u.suspended_at IS NULL",
   ).bind(sid, now).first<{ id: string; email: string; display_name: string; role: string; email_verified_at: number | null; mfa_verified_at: number | null; last_seen_at: number | null }>();
   if (!row) return null;
   const user: AppUser = { userId: row.id, email: row.email, displayName: row.display_name, fullName: row.display_name, role: row.role, mfaVerified: row.mfa_verified_at != null, emailVerified: row.email_verified_at != null, staffExpiresInSeconds: null, staffEndsBy: null };

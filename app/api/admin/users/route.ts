@@ -7,6 +7,7 @@ import { auditAdminDenied } from "@/lib/audit-denied";
 import { ROLES } from "@/lib/rbac";
 import { stepUp } from "@/lib/step-up";
 import { requestPromotion } from "@/lib/admin-requests";
+import { setStaffNote, setSuspended } from "@/lib/user-admin";
 
 const err = (error: string, status: number) => NextResponse.json({ error }, { status });
 const PAGE = 25;
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
   const like = `%${q.replace(/[\\%_]/g, (c) => "\\" + c)}%`;
   const [users, total, stats] = await Promise.all([
     db.prepare(
-      "SELECT u.id,u.email,u.display_name AS name,u.role,u.created_at AS createdAt,u.last_login_at AS lastLoginAt," +
+      "SELECT u.id,u.email,u.display_name AS name,u.role,u.created_at AS createdAt,u.last_login_at AS lastLoginAt,u.suspended_at AS suspendedAt,u.staff_note AS staffNote," +
         "COALESCE((SELECT SUM(delta) FROM point_ledger p WHERE p.user_id=u.id),0) AS coins " +
         "FROM users u WHERE (?1='' OR lower(u.email) LIKE ?2 ESCAPE '\\' OR lower(u.display_name) LIKE ?2 ESCAPE '\\') " +
         "ORDER BY u.created_at DESC LIMIT ?3 OFFSET ?4",
@@ -62,6 +63,8 @@ export async function GET(req: NextRequest) {
 const putSchema = z.union([
   z.object({ id: z.string().min(1).max(64), role: z.enum(ROLES), password: z.string().max(200).optional(), reason: z.string().max(1000).optional() }),
   z.object({ id: z.string().min(1).max(64), resetMfa: z.literal(true) }),
+  z.object({ id: z.string().min(1).max(64), suspend: z.boolean(), password: z.string().max(200).optional(), reason: z.string().max(1000).optional() }),
+  z.object({ id: z.string().min(1).max(64), note: z.string().max(4000) }),
 ]);
 
 /** PUT {id, role, password, reason} changes a user's role after step-up (lib/step-up.ts). PUT {id, resetMfa:true} clears another user's MFA (lost device); the admin needs their own verified MFA session. */
@@ -88,6 +91,18 @@ export async function PUT(req: NextRequest) {
     if (!done) return err(AUDIT_UNAVAILABLE, 503);
     return NextResponse.json({ ok: true });
   }
+  if ("note" in parsed.data) {
+    const r = await setStaffNote(db, req, admin, id, parsed.data.note);
+    return r.ok ? NextResponse.json({ ok: true }) : err(r.error, r.status);
+  }
+  if ("suspend" in parsed.data) {
+    // N-18a: suspend or reactivate needs step-up; nobody suspends themselves.
+    if (id === admin.userId) return err("SELF_SUSPEND_REFUSED", 403);
+    const su = await stepUp(db, req, admin, parsed.data, "/api/admin/users");
+    if (!su.ok) return err(su.error, su.status);
+    const r = await setSuspended(db, req, admin, id, parsed.data.suspend, su.reason);
+    return r.ok ? NextResponse.json({ ok: true }) : err(r.error, r.status);
+  }
   const { role } = parsed.data;
   // Step-up (N-15b): every role change, including making an admin, needs the caller password again and a reason.
   const su = await stepUp(db, req, admin, parsed.data, "/api/admin/users");
@@ -95,14 +110,14 @@ export async function PUT(req: NextRequest) {
   const target = await db.prepare("SELECT role FROM users WHERE id=?").bind(id).first<{ role: string }>();
   if (!target) return err("NOT_FOUND", 404);
   if (target.role === "admin" && role !== "admin") {
-    const n = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE role='admin'").first<{ n: number }>();
+    const n = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE role='admin' AND suspended_at IS NULL").first<{ n: number }>();
     if ((n?.n ?? 0) <= 1) return err("LAST_ADMIN", 409);
   }
   // N-15c: from 2 admins on, a promotion to admin is a request that a different admin must approve.
   // With fewer than 2 admins, the one admin promotes with step-up alone and the audit row says single_admin_bootstrap.
   let bootstrap = false;
   if (role === "admin" && target.role !== "admin") {
-    const n = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE role='admin'").first<{ n: number }>();
+    const n = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE role='admin' AND suspended_at IS NULL").first<{ n: number }>();
     if ((n?.n ?? 0) >= 2) {
       const r = await requestPromotion(db, req, admin, id, su.reason);
       if (!r.ok) return err(r.error, r.status);
