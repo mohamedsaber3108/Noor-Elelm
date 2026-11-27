@@ -12,7 +12,6 @@ import { AUDIT_UNAVAILABLE, auditStatement, runAudited } from "@/lib/audit";
 // Plain text, 1 to 500 chars, no tags and no control characters (newline and tab allowed).
 const plain = z.string().trim().min(1).max(500)
   .refine((s) => !/[<>]/.test(s), "NO_TAGS")
-  // eslint-disable-next-line no-control-regex
   .refine((s) => !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(s), "NO_CONTROL");
 
 export const PRICING_NOTE_AR = "الخطط المدفوعة غير معروضة حاليًا. المعرفة الأساسية متاحة مجانًا حاليًا، ولا يوجد بيع أو دفع الآن.";

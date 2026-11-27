@@ -158,6 +158,16 @@ Migration `drizzle/0007_audit_chain.sql` is additive: new nullable columns on `a
 - **What it does not prove.** Someone with the database file can remove the triggers and rewrite the whole chain from any point, and the verifier will pass. Only a copy kept off the server detects that. **The daily off-box copy is NOT built**: it waits for the owner's storage answer (QUESTIONS Q6 and Q8). Rows removed from the very end, and rows added without `seq`, are not detected either. Old rows (before 0007) are not covered at all.
 - Failed and denied attempts (for example a 403 on an admin route) are not logged yet. The viewer page is also not built (N-14b).
 
+## Settings
+
+Migration `drizzle/0009_settings.sql` is additive: one new table `settings` (`key`, `value`, `updated_at`, `updated_by`). Take an EBS snapshot first. It is not applied by this change. Until it is applied the site works on the defaults (reads are tolerant), but saving a setting fails.
+
+- **Keys (a fixed list, no free keys).** `feature.game_enabled` and `feature.corrections_enabled` (on/off); `site.pricing_note_ar`, `site.pricing_note_en`, `site.registration_note_ar`, `site.registration_note_en` (plain text, up to 500 characters, no tags).
+- **Defaults keep today's behaviour.** Both flags default to on, and the notes default to the wording the site shows today. With an empty table nothing looks different.
+- **Flag off.** `/api/quiz/next`, `/api/quiz/answer` and `POST /api/corrections` answer `503 FEATURE_OFF`. The game and correction pages show a bilingual notice.
+- **Who and how.** An admin with a verified MFA session uses `/admin/settings` (or `PUT /api/admin/settings` with `key`, `value`, `reason` of 10 to 300 characters). Every change writes a `SETTING_CHANGED` audit row in the same batch. If the audit write fails the setting is not changed. Public `GET /api/settings` returns only `site.*` and `feature.*` keys, cached for 30 seconds, so a change can take that long to show.
+- **Not built.** The step-up dialog with a second approver (ADMIN.md s.4) for "disable a feature for everyone". Today the guard is admin + MFA + a written reason + the audit row.
+
 ## Limits of this setup
 
 - One server means one point of failure. Use EBS snapshots plus the SQLite backups. To scale out, deploy the same build to Cloudflare Workers + D1 (`DEPLOY_CLOUDFLARE.md`).
