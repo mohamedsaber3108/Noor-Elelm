@@ -35,7 +35,7 @@ export function AdminUsers() {
   if (state === 'denied') return <main className="page-main"><div className="page-hero"><h1>إدارة المستخدمين</h1></div><div className="empty-state">هذه الصفحة للمديرين فقط. <Link href="/login?return_to=%2Fadmin%2Fusers">تسجيل الدخول</Link></div></main>;
   const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   return <main className="page-main"><div className="page-hero"><span className="eyebrow">الإدارة</span><h1>المستخدمون والإحصاءات</h1><p>بيانات حقيقية من قاعدة البيانات. تغيير الدور يُسجَّل في سجل التدقيق.</p></div>
-    <nav className="admin-nav"><Link href="/admin">المراجعة</Link> · <Link href="/admin/corrections">البلاغات</Link> · <Link href="/admin/infographics">الإنفوجرافيك</Link></nav>
+    <nav className="admin-nav"><Link href="/admin">المراجعة</Link> · <Link href="/admin/corrections">البلاغات</Link> · <Link href="/admin/infographics">الإنفوجرافيك</Link> · <Link href="/admin/settings">الإعدادات</Link></nav>
     {state === 'error' && <div role="alert" className="error-note">تعذر تحميل البيانات.</div>}
     {data && <div className="admin-stats">{labels.map(([k, l]) => <div key={k}><span>{l}</span><strong>{String(data.stats[k] ?? 0)}</strong></div>)}</div>}
     {msg && <p role="status">{msg}</p>}
