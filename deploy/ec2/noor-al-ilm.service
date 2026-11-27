@@ -17,6 +17,7 @@ ExecStart=/usr/local/bin/node --import ./scripts/sites-env.mjs ./node_modules/wr
   --config dist/server/wrangler.json --local --persist-to /var/lib/noor-al-ilm/state \
   --ip 127.0.0.1 --port 8787 --inspector-port 0 --show-interactive-dev-session=false \
   --var TRUST_PROXY_HEADER:x-real-ip
+# Sign-up is closed by default. See DEPLOY_EC2.md "Sign-up switch" for REGISTRATION_MODE and REGISTRATION_ALLOWLIST.
 Restart=always
 RestartSec=3
 TimeoutStopSec=20
