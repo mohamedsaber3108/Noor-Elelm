@@ -119,9 +119,8 @@ describe("staff session without MFA", () => {
       expect((await queueGet()).status).toBe(200);
     });
   }
-  it("a user in REVIEWER_IDS is staff too", async () => {
-    const u = await signInUnverified("learner");
-    setEnv("REVIEWER_IDS", u.id);
+  it("an editorial role (scholar) is staff too", async () => {
+    const u = await signInUnverified("scholar");
     expect((await corrGet()).status).toBe(403);
     expect((await meGet()).status).toBe(401);
     await verifySessions(u.id);

@@ -95,9 +95,20 @@ Example line: `--var REGISTRATION_MODE:allowlist --var REGISTRATION_ALLOWLIST:<c
 
 **Restore a backup:** `sudo systemctl stop noor-al-ilm`. Then `gunzip -c <backup>-d1-*.sqlite.gz | sudo tee /var/lib/noor-al-ilm/state/v3/d1/miniflare-D1DatabaseObject/<same-hash>.sqlite >/dev/null`, delete the `-wal`/`-shm` files next to it, and run `sudo chown -R noor:noor /var/lib/noor-al-ilm` and `sudo systemctl start noor-al-ilm`. Also copy backups off the server, for example with an S3 sync or EBS snapshots.
 
+## Moving from REVIEWER_IDS to database roles (once, before deploying the N-15a release)
+From this release only `users.role` makes someone staff. `REVIEWER_IDS` grants nothing.
+1. Take an EBS snapshot and run `sudo noor-backup pre-roles`.
+2. List the user ids in `REVIEWER_IDS` where the host sets it (the service environment or `.dev.vars`). Write them down.
+3. `sudo systemctl stop noor-al-ilm`, then open the database with `sudo sqlite3 <file>.sqlite` (the file named in "Lost device, step 3" below).
+4. Check each id: `SELECT id,email,role FROM users WHERE id IN ('<id1>','<id2>');`
+5. For each person: `UPDATE users SET role='<role>' WHERE id='<id>';` `<role>` is one of `researcher`, `fact_checker`, `language_editor`, `scholar`, `publisher`, `reviewer` (`lib/rbac.ts`). If unsure, use `reviewer`: it keeps the access they have today.
+6. `sudo chown -R noor:noor /var/lib/noor-al-ilm` and `sudo systemctl start noor-al-ilm`.
+7. Deploy the release (`sudo noor-deploy <commit>`). Then check that an admin can still sign in, pass `/mfa` and open `/admin/users`, and that each moved person can open `/admin`.
+8. Take `REVIEWER_IDS` out of the host settings and restart the service.
+
 ## Staff two-step sign-in (MFA)
 
-Reviewers, admins and ids in `REVIEWER_IDS` must pass a 6-digit authenticator code (or a recovery code) after the password. Learners are not affected.
+Staff (every role in `lib/rbac.ts` except `learner`) must pass a 6-digit authenticator code (or a recovery code) after the password. Learners are not affected.
 
 **Key delivery is NOT decided (QUESTIONS Q27).** How `MFA_SECRET_KEY` reaches the Worker on EC2 is open. Do **not** pass it with `--var`: command-line values are visible in process lists. Merge and deploy of this release wait for the owner's answer. The runbook (outside the repository: `plan/RUNBOOK-OD-04a.md`) lists the options to prove on staging first.
 
@@ -122,7 +133,7 @@ Reviewers, admins and ids in `REVIEWER_IDS` must pass a 6-digit authenticator co
 
 ## Staff sessions
 
-A staff session (reviewer, admin, or an id in `REVIEWER_IDS`) that has passed MFA ends after **30 minutes without use** (idle) or **8 hours after the MFA step** (absolute), whichever comes first. The person must sign in again and pass MFA again. Learner sessions keep their 30-day life.
+A staff session (any role except `learner`) that has passed MFA ends after **30 minutes without use** (idle) or **8 hours after the MFA step** (absolute), whichever comes first. The person must sign in again and pass MFA again. Learner sessions keep their 30-day life.
 
 - **Settings (names only, both optional):** `STAFF_IDLE_MINUTES` (default 30) and `STAFF_ABSOLUTE_HOURS` (default 8). A value that is not a number, or is outside the range (idle 5 to 240 minutes, absolute 1 to 24 hours), is ignored and the default is used. Set them with the same method as the other settings; never in chat.
 - **What users see:** about two minutes before the idle end, a small notice appears in the header (Arabic and English) with a button "Stay signed in". The button counts as use. The notice checks the clock every 30 seconds, not every second. When the 8-hour limit is the one about to end the session, the notice says so and has no button, because nothing can extend it. After the end, the next page or call sends the person to sign in.

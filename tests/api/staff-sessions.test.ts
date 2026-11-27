@@ -49,10 +49,8 @@ describe("staff idle and absolute limits", () => {
     offset = 8 * HOUR + MIN; // 6 min after the last use, but past 8 hours
     expect((await corrGet()).status).toBe(403);
   });
-  it("a staff user from REVIEWER_IDS is limited too", async () => {
-    const u = await signIn("learner");
-    setEnv("REVIEWER_IDS", u.id);
-    await db().prepare("UPDATE sessions SET mfa_verified_at=? WHERE user_id=?").bind(Date.now(), u.id).run();
+  it("an editorial role (researcher) is limited too", async () => {
+    await signIn("researcher");
     expect((await corrGet()).status).toBe(200);
     offset = 31 * MIN;
     expect((await corrGet()).status).toBe(403);

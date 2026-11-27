@@ -10,7 +10,7 @@ const errors: Record<string, string> = {
   RATE_LIMITED: 'محاولات كثيرة. انتظر قليلًا.',
   LAST_ADMIN: 'لا يمكن حذف آخر مدير للنظام.',
 };
-const roleNames: Record<string, string> = { learner: 'متعلّم', reviewer: 'مراجع', admin: 'مدير' };
+const roleNames: Record<string, string> = { learner: 'متعلّم', researcher: 'باحث', fact_checker: 'مدقق حقائق', language_editor: 'محرر لغوي', scholar: 'عالِم', publisher: 'ناشر', reviewer: 'مراجع', admin: 'مدير' };
 
 async function call(method: string, body: unknown) {
   const r = await fetch('/api/account', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -55,7 +55,7 @@ export function AccountPage() {
     <VerifyBanner />
     <div className="correction-panel">
       <p>الدور: <strong>{roleNames[acc.role] || acc.role}</strong> · الجلسات النشطة: <strong>{acc.activeSessions}</strong></p>
-      {(admin || acc.role === 'reviewer') && <p><Link href="/admin">لوحة المراجعة</Link>{admin && <> · <Link href="/admin/users">إدارة المستخدمين والإحصاءات</Link></>}</p>}
+      {acc.role !== 'learner' && <p><Link href="/admin">لوحة المراجعة</Link>{admin && <> · <Link href="/admin/users">إدارة المستخدمين والإحصاءات</Link></>}</p>}
       {msg && <p role={msg.ok ? 'status' : 'alert'} className={msg.ok ? '' : 'error-note'}>{msg.k}</p>}
       <h2>الاسم</h2>
       <form onSubmit={rename}><label>الاسم المعروض<input required minLength={2} maxLength={60} value={name} onChange={e => setName(e.target.value)} /></label><button className="btn-primary">حفظ</button></form>

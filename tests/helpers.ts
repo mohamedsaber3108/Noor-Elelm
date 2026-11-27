@@ -6,7 +6,7 @@ import { setCookie } from "./mocks/next-headers";
 export const PASSWORD = "correct-horse-battery";
 let hashed: Promise<string> | undefined;
 
-type Role = "learner" | "reviewer" | "admin";
+type Role = "learner" | "researcher" | "fact_checker" | "language_editor" | "scholar" | "publisher" | "reviewer" | "admin";
 export const db = () => env.DB as unknown as import("./d1").D1Stub;
 export const setEnv = (key: string, value: unknown) => void ((env as unknown as Record<string, unknown>)[key] = value);
 

@@ -43,11 +43,11 @@ describe("GET /api/archive", () => {
     await signIn("admin");
     expect((await (await archive(call("GET", `/api/archive?id=${ID}`))).json()).restricted).toBe(false);
   });
-  it("lets a user listed in REVIEWER_IDS read the text (known gap: env path, see N-15)", async () => {
+  it("a user listed in REVIEWER_IDS still gets restricted text: the env path is gone (N-15)", async () => {
     const u = await signIn("learner");
     setEnv("REVIEWER_IDS", `x, ${u.id}`);
     await verifySessions(u.id);
-    expect((await (await archive(call("GET", `/api/archive?id=${ID}`))).json()).restricted).toBe(false);
+    expect((await (await archive(call("GET", `/api/archive?id=${ID}`))).json()).restricted).toBe(true);
   });
 });
 
