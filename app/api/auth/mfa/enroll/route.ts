@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { sameOrigin } from "@/app/auth";
 import { env } from "cloudflare:workers";
 import { decryptSecret, encryptSecret } from "@/lib/mfa";
 import { base32Encode, newSecret, otpauthUri } from "@/lib/totp";
@@ -6,6 +7,7 @@ import { err, mfaGuard, ok, triesAllowed } from "@/lib/mfa-routes";
 
 /** POST starts enrolment. A pending secret is returned again (a reload keeps the scan valid); otherwise a new one is made, stored encrypted and pending. */
 export async function POST(req: NextRequest) {
+  if (!sameOrigin(req)) return err("BAD_ORIGIN", 403);
   const g = await mfaGuard(req);
   if ("res" in g) return g.res;
   if (!(await triesAllowed(g.user.userId, g.ip, "mfa-enroll"))) return err("RATE_LIMITED", 429);

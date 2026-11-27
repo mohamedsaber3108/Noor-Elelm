@@ -1,3 +1,5 @@
+> Historical: audited commit e5f4215. Several statements are out of date (migrations, authentication, git remote, pricing). See IMPLEMENTATION_STATUS.md and PRODUCTION_READINESS.md for the current state.
+
 # NOOR AL-ILM — Complete Project Audit
 
 **Audit date:** 2026-10-27  

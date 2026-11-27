@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 import {
-  SESSION_COOKIE, clientIp, createSession, isSecureRequest, destroySession, getCurrentUser, hashPassword, isReviewer, isStaff,
-  rateLimit, registrationAllowed, registrationMode, sameOrigin, sessionCookieOptions, verifyPassword,
+  SESSION_COOKIE, clientIp, createSession, destroySession, getCurrentUser, hashPassword, isReviewer, isStaff,
+  isHttps, rateLimit, registrationAllowed, registrationMode, sameOrigin, sessionCookieOptions, verifyPassword,
 } from "@/app/auth";
 import { issueMail } from "@/lib/auth-tokens";
 
@@ -14,7 +14,7 @@ const loginSchema = z.object({ email, password: z.string().min(1).max(200) });
 const DUMMY_HASH = "pbkdf2$100000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
 const err = (error: string, status: number) => NextResponse.json({ error }, { status });
-const isSecure = isSecureRequest;
+const isSecure = isHttps;
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ action: string }> }) {
   if ((await ctx.params).action !== "session") return err("NOT_FOUND", 404);

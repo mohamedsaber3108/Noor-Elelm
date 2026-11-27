@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 import { GET as next } from "@/app/api/quiz/next/route";
 import { POST as answer } from "@/app/api/quiz/answer/route";
 import { trialQuestions } from "@/lib/quiz-bank";
-import { call, count, db, signIn } from "../helpers";
+import { EVIL, call, count, db, signIn } from "../helpers";
 
 const q = trialQuestions.find((x) => x.id === "t01")!; // choice, correct "a"
 const wrongKey = q.options.find((o) => o.key !== q.correct)!.key;
@@ -51,6 +51,18 @@ describe("GET /api/quiz/next", () => {
 describe("POST /api/quiz/answer", () => {
   it("returns 401 without a session", async () => {
     expect((await post({ questionId: q.id, answerKey: "a", token: crypto.randomUUID() })).status).toBe(401);
+  });
+  it("refuses a cross-origin POST with 403 BAD_ORIGIN and records nothing", async () => {
+    const u = await signIn("learner");
+    const res = await answer(call("POST", "/api/quiz/answer", { questionId: q.id, answerKey: q.correct, token: await serve(u.id) }, EVIL));
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe("BAD_ORIGIN");
+    expect(await count("SELECT COUNT(*) AS n FROM quiz_attempts")).toBe(0);
+  });
+  it("accepts a same-origin POST (Origin equals the request host)", async () => {
+    const u = await signIn("learner");
+    const res = await answer(call("POST", "/api/quiz/answer", { questionId: q.id, answerKey: q.correct, token: await serve(u.id) }, { origin: new URL(call("GET", "/").url).origin }));
+    expect(res.status).toBe(200);
   });
   it("accepts a correct answer, adds 1 coin, and returns the balance", async () => {
     const u = await signIn("learner");

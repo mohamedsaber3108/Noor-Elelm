@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { env } from 'cloudflare:workers';
-import {clientIp,getCurrentUser,isReviewer} from '@/app/auth';
+import {clientIp,getCurrentUser,isReviewer,sameOrigin} from '@/app/auth';
 import {AUDIT_UNAVAILABLE,auditStatement,runAudited} from '@/lib/audit';
 import records from '@/data/archive-summaries.json';
 
 const known = new Set((records as {id:string}[]).map(x=>x.id));
 
-export async function POST(req:NextRequest){
+export async function POST(req:NextRequest){if(!sameOrigin(req))return NextResponse.json({error:'BAD_ORIGIN'},{status:403});
   const u=await getCurrentUser(); if(!u)return NextResponse.json({error:'SIGN_IN_REQUIRED'},{status:401});
   if(!env.DB)return NextResponse.json({error:'DATABASE_UNAVAILABLE'},{status:503});
   let body:{contentId?:string;message?:string;sourceUrl?:string};
